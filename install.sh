@@ -29,4 +29,7 @@ jq --arg token "${ANTHROPIC_AUTH_TOKEN:-}" \
   > "$HOME/.claude-second-profile/settings.json"
 echo "GEN   $HOME/.claude-second-profile/settings.json"
 
+git -C "$DOTFILES" config core.hooksPath .githooks
+echo "HOOK  core.hooksPath -> .githooks"
+
 echo "Done."

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Copy .env to new worktree after `git worktree add`
+# $3 = 1 means branch checkout (not file checkout)
+if [ "$3" = "1" ]; then
+    MAIN_WORKTREE=$(git worktree list | head -1 | awk '{print $1}')
+    if [ -f "$MAIN_WORKTREE/.env" ] && [ ! -f ".env" ]; then
+        cp "$MAIN_WORKTREE/.env" ".env"
+        echo "Copied .env from main worktree"
+    fi
+fi
+
