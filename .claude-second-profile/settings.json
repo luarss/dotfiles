@@ -1,0 +1,41 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_TELEMETRY": "1",
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"
+  },
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(*.env*)",
+      "Read(**/.env)"
+    ],
+    "defaultMode": "default"
+  },
+  "model": "opus",
+  "hooks": {
+    "Notification": [
+       {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "choice=$(osascript -e 'button returned of (display dialog \"Claude Code needs attention\" buttons {\"Dismiss\", \"Terminal\", \"VS Code\"} default button \"VS Code\" giving up after 10)'); [[ \"$choice\" == \"VS Code\" ]] && osascript -e 'tell application \"Visual Studio Code\" to activate'; [[ \"$choice\" == \"Terminal\" ]] && osascript -e 'tell application \"Terminal\" to activate'"          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "code-review@claude-plugins-official": true
+  },
+  "alwaysThinkingEnabled": true,
+  "promptSuggestionEnabled": false
+}
+
