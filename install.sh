@@ -14,30 +14,25 @@ symlink() {
   echo "LINK  $dst -> $src"
 }
 
+setup_profile() {
+  local profile="$1"
+  local env_var="$2"
+  mkdir -p "$HOME/$profile"
+  symlink "$profile/CLAUDE.md"
+  jq --arg token "${!env_var:-}" \
+    '.env.ANTHROPIC_AUTH_TOKEN = $token' \
+    "$DOTFILES/$profile/settings.json" \
+    > "$HOME/$profile/settings.json"
+  echo "GEN   $HOME/$profile/settings.json"
+}
+
+# Symlinks
 symlink .zshrc
 symlink .env.example
 
-# --- .claude-second-profile ---
-# CLAUDE.md can be symlinked (no secrets), but settings.json must be generated
-# because it contains ANTHROPIC_AUTH_TOKEN.
-mkdir -p "$HOME/.claude-second-profile"
-symlink .claude-second-profile/CLAUDE.md
-
-jq --arg token "${Z_AI_AUTH_TOKEN:-}" \
-  '.env.ANTHROPIC_AUTH_TOKEN = $token' \
-  "$DOTFILES/.claude-second-profile/settings.json" \
-  > "$HOME/.claude-second-profile/settings.json"
-echo "GEN   $HOME/.claude-second-profile/settings.json"
-
-# --- .claude-third-profile (DashScope/Aliyun) ---
-mkdir -p "$HOME/.claude-third-profile"
-symlink .claude-third-profile/CLAUDE.md
-
-jq --arg token "${DASHSCOPE_AUTH_TOKEN:-}" \
-  '.env.ANTHROPIC_AUTH_TOKEN = $token' \
-  "$DOTFILES/.claude-third-profile/settings.json" \
-  > "$HOME/.claude-third-profile/settings.json"
-echo "GEN   $HOME/.claude-third-profile/settings.json"
+# Profiles: (profile_dir, env_var_name)
+setup_profile ".claude-second-profile" "Z_AI_AUTH_TOKEN"
+setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
 
 git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
