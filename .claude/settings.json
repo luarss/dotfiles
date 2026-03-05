@@ -12,13 +12,14 @@
   },
   "model": "sonnet",
   "hooks": {
-    "Notification": [                                                              
-      {                                                                            
-        "matcher": "",                                                             
-        "hooks": [                                                                 
-          {                                                                        
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
             "type": "command",
-            "command": "choice=$(osascript -e 'button returned of (display dialog \"Claude Code needs attention\" buttons {\"Dismiss\", \"Terminal\", \"VS Code\"} default button \"VS Code\" giving up after 10)'); [[ \"$choice\" == \"VS Code\" ]] && osascript -e 'tell application \"Visual Studio Code\" to activate'; [[ \"$choice\" == \"Terminal\" ]] && osascript -e 'tell application \"Terminal\" to activate'"          }                                                                       
+            "command": "choice=$(osascript -e 'button returned of (display dialog \"Claude Code needs attention\" buttons {\"Dismiss\", \"Terminal\", \"VS Code\"} default button \"VS Code\" giving up after 10)'); [[ \"$choice\" == \"VS Code\" ]] && osascript -e 'tell application \"Visual Studio Code\" to activate'; [[ \"$choice\" == \"Terminal\" ]] && osascript -e 'tell application \"Terminal\" to activate'"
+          }
         ]
       }
     ]
@@ -33,4 +34,3 @@
     "playwright@claude-plugins-official": true
   }
 }
-
