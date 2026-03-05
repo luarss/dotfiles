@@ -115,16 +115,19 @@ ZSH_AUTOSUGGEST_USE_ASYNC=1
 
 . "$HOME/.local/bin/env"
 
-# ------ second claude ----
+# ------ N-Claude profile system ----
 _claude_with_profile() {
   export CLAUDE_CONFIG_DIR="$1"
   command claude "${@:2}"
 }
-# Personal profile (default)
-claude() {
-  _claude_with_profile "$HOME/.claude" "$@"
-}
-# Second profile
-s-claude() {
-  _claude_with_profile "$HOME/.claude-second-profile" "$@"
-}
+
+# Define profiles: (wrapper_name, profile_dir)
+_claude_profiles=(
+  "claude"            ".claude"
+  "s-claude"          ".claude-second-profile"
+  "d-claude"          ".claude-third-profile"
+)
+
+for name dir in "${_claude_profiles[@]}"; do
+  eval "${name}() { _claude_with_profile \"\$HOME/${dir}\" \"\$@\"; }"
+done
