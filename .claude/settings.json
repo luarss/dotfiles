@@ -1,5 +1,7 @@
 {
-  "env": {},
+  "env": {
+    "ENABLE_LSP_TOOL": "1"
+  },
   "permissions": {
     "deny": [
       "Read(.env)",
@@ -25,6 +27,7 @@
     "code-review@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
     "playwright@claude-plugins-official": true
