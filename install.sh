@@ -3,6 +3,13 @@
 
 DOTFILES="$(cd "$(dirname "$0")" && pwd)"
 
+# Load tokens from .env if present
+if [ -f "$DOTFILES/.env" ]; then
+  set -a
+  . "$DOTFILES/.env"
+  set +a
+fi
+
 symlink() {
   local src="$DOTFILES/$1"
   local dst="$HOME/$1"
