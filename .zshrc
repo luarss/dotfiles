@@ -128,3 +128,7 @@ claude() {
 s-claude() {
   _claude_with_profile "$HOME/.claude-second-profile" "$@"
 }
+# Third profile (DashScope/Aliyun)
+d-claude() {
+  _claude_with_profile "$HOME/.claude-third-profile" "$@"
+}

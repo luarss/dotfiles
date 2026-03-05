@@ -23,11 +23,21 @@ symlink .env.example
 mkdir -p "$HOME/.claude-second-profile"
 symlink .claude-second-profile/CLAUDE.md
 
-jq --arg token "${ANTHROPIC_AUTH_TOKEN:-}" \
+jq --arg token "${Z_AI_AUTH_TOKEN:-}" \
   '.env.ANTHROPIC_AUTH_TOKEN = $token' \
   "$DOTFILES/.claude-second-profile/settings.json" \
   > "$HOME/.claude-second-profile/settings.json"
 echo "GEN   $HOME/.claude-second-profile/settings.json"
+
+# --- .claude-third-profile (DashScope/Aliyun) ---
+mkdir -p "$HOME/.claude-third-profile"
+symlink .claude-third-profile/CLAUDE.md
+
+jq --arg token "${DASHSCOPE_AUTH_TOKEN:-}" \
+  '.env.ANTHROPIC_AUTH_TOKEN = $token' \
+  "$DOTFILES/.claude-third-profile/settings.json" \
+  > "$HOME/.claude-third-profile/settings.json"
+echo "GEN   $HOME/.claude-third-profile/settings.json"
 
 git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
