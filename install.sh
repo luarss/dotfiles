@@ -33,6 +33,22 @@ setup_profile() {
   echo "GEN   $HOME/$profile/settings.json"
 }
 
+install_zsh_plugin() {
+  local repo="$1"
+  local name="${2:-$(basename "$repo" .git)}"
+  local zsh_custom="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+  local plugin_dir="$zsh_custom/plugins/$name"
+
+  if [ -d "$plugin_dir/.git" ]; then
+    echo "SKIP  $name (already installed)"
+    return
+  fi
+
+  mkdir -p "$zsh_custom/plugins"
+  git clone --depth=1 "https://github.com/$repo.git" "$plugin_dir" 2>/dev/null
+  echo "INST  $name plugin"
+}
+
 # Symlinks
 symlink .zshrc
 symlink .env.example
@@ -43,5 +59,9 @@ setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
 
 git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
+
+# Install custom zsh plugins (requires Oh My Zsh to be installed first)
+install_zsh_plugin "zsh-users/zsh-autosuggestions"
+install_zsh_plugin "zsh-users/zsh-syntax-highlighting"
 
 echo "Done."
