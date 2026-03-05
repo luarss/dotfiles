@@ -125,7 +125,7 @@ export BAZEL_ORFS_PATH=/home/luars/bazel-orfs
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-. "$HOME/.local/bin/env"
+[[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 
 # ------ N-Claude profile system ----
 _claude_with_profile() {
