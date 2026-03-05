@@ -113,6 +113,18 @@ ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"
 ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"
 ZSH_AUTOSUGGEST_USE_ASYNC=1
 
+export GPG_TTY=$(tty)
+export EDITOR=vim
+export VISUAL=vim
+
+# OpenROAD
+export ORFS_FLOW_DIR="/home/luars/OpenROAD-flow-scripts/flow"
+export BAZEL_ORFS_PATH=/home/luars/bazel-orfs
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
 . "$HOME/.local/bin/env"
 
 # ------ N-Claude profile system ----
