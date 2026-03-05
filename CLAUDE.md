@@ -8,21 +8,22 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 
 ## Structure
 
-- `.zshrc` — Main zsh config: Oh My Zsh with `robbyrussell` theme, plugins (`git`, `zsh-autosuggestions`, `zsh-syntax-highlighting`), and dual Claude profile setup
-- `install.sh` — Bootstrap script (currently a stub; symlink logic goes here)
+- `.zshrc` — Main zsh config: Oh My Zsh with `robbyrussell` theme, plugins (`git`, `zsh-autosuggestions`, `zsh-syntax-highlighting`), and N-Claude profile setup
+- `install.sh` — Bootstrap script that symlinks dotfiles and generates secret-bearing configs
 - `.claude/` — Claude Code config for the default profile (`~/.claude`)
 - `.claude-second-profile/` — Claude Code config for a second profile (`~/.claude-second-profile`)
+- `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
 
-## Dual Claude Profile System
+## N-Claude Profile System
 
-The `.zshrc` defines two shell functions to switch between Claude profiles via `CLAUDE_CONFIG_DIR`:
+The `.zshrc` defines a `_claude_with_profile` helper and wrapper functions to switch between Claude profiles via `CLAUDE_CONFIG_DIR`:
 
 ```zsh
 claude()    # uses ~/.claude (default)
 s-claude()  # uses ~/.claude-second-profile
 ```
 
-Each profile directory contains its own `CLAUDE.md` with shared global preferences.
+To add more profiles, create a new wrapper function following the same pattern. Each profile directory contains its own `CLAUDE.md` with shared global preferences.
 
 ## Install
 
@@ -30,4 +31,12 @@ Each profile directory contains its own `CLAUDE.md` with shared global preferenc
 ./install.sh
 ```
 
-The script should symlink dotfiles from this repo into `$HOME`. When extending it, prefer symlinks over copying so edits to the repo take effect immediately.
+The script symlinks dotfiles into `$HOME` and:
+- Generates `.claude-second-profile/settings.json` with `ANTHROPIC_AUTH_TOKEN` from environment
+- Configures git to use `.githooks/` via `core.hooksPath`
+
+When extending, prefer symlinks over copying so edits to the repo take effect immediately.
+
+## Git Hooks
+
+- `post-checkout` — Copies `.env` from main worktree to new worktrees (for `git worktree add`)
