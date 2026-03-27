@@ -2,7 +2,7 @@
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "",
     "ANTHROPIC_BASE_URL": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5.1",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.5-plus",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5",
     "ANTHROPIC_MODEL": "MiniMax-M2.5",
