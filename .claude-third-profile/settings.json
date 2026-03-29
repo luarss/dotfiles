@@ -24,12 +24,12 @@
   "model": "opus",
   "hooks": {
     "Notification": [
-       {
+      {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "choice=$(osascript -e 'button returned of (display dialog \"Claude Code needs attention\" buttons {\"Dismiss\", \"Terminal\", \"VS Code\"} default button \"VS Code\" giving up after 10)'); [[ \"$choice\" == \"VS Code\" ]] && osascript -e 'tell application \"Visual Studio Code\" to activate'; [[ \"$choice\" == \"Terminal\" ]] && osascript -e 'tell application \"Terminal\" to activate'"
+            "command": "osascript -e 'display notification \"Claude Code needs your attention\" with title \"Claude Code\" subtitle \"Action required\"' && afplay /System/Library/Sounds/Glass.aiff"
           }
         ]
       }
