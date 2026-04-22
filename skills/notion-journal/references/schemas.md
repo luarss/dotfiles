@@ -1,90 +1,169 @@
-# Database schemas
+# Page schemas
 
-Exact property definitions for each of the four databases. Use these property names and types verbatim when calling the Notion MCP — case and spacing matter.
-
-When verifying an existing database, check that each property listed here exists with the specified type. If not, tell the user before proceeding.
+Field definitions for each of the four section pages. Entries are sub-pages with fields written as bold markdown labels. Each section page also has a summary table at the top.
 
 ---
 
 ## Wins
 
-| Property | Type | Notes |
-|---|---|---|
-| `Title` | Title | One-line summary (e.g. "Cut deploy time from 20min to 4min") |
-| `Date` | Date | Default to today |
-| `What I did` | Rich text | 2–3 sentences, concrete actions |
-| `Impact` | Rich text | Quantified if possible. Never leave blank; use "TBD" + Status tag if unknown |
-| `Skills demonstrated` | Multi-select | Options: `Leadership`, `Technical depth`, `Cross-functional`, `Communication`, `Mentorship`, `Strategy`, `Execution`, `Product sense`, `Design` |
-| `Evidence` | URL or Rich text | Links to PR, doc, Slack thread, dashboard |
-| `Quarter` | Formula | Auto-derived from Date (e.g. "2026-Q2") |
-| `Status` | Select | Options: `Complete`, `Needs-followup` |
+### Summary table columns
+
+| Date | Title | Impact | Status |
+|------|-------|--------|--------|
+
+### Sub-page fields
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `Date` | Yes | Default to today (YYYY-MM-DD) |
+| `What I did` | Yes | 2–3 sentences, concrete actions |
+| `Impact` | Yes | Quantified if possible. Never blank — use "TBD" if unknown |
+| `Skills demonstrated` | Yes | From: `Leadership`, `Technical depth`, `Cross-functional`, `Communication`, `Mentorship`, `Strategy`, `Execution`, `Product sense`, `Design` |
+| `Evidence` | Recommended | Commit links, PRs, docs, Slack threads |
+| `Status` | Recommended | `Complete` or `Needs-followup` |
+
+### Sub-page content format
+
+```
+**Date:** YYYY-MM-DD
+
+**What I did:** ...
+
+**Impact:** ...
+
+**Skills demonstrated:** Skill1, Skill2
+
+**Evidence:** [label](url), [label](url)
+
+**Status:** Complete
+```
 
 ---
 
-## Learnings
+## Learning
 
-| Property | Type | Notes |
-|---|---|---|
-| `Title` | Title | Short phrase capturing the insight (e.g. "Share rough work earlier") |
-| `Date` | Date | Default to today |
-| `Situation` | Rich text | What happened, briefly |
-| `What I learned` | Rich text | The insight as a reusable principle |
-| `What I'll do differently` | Rich text | Concrete behavioral change, not aspiration |
-| `Category` | Select | Options: `Technical`, `Communication`, `Process`, `People`, `Self-management` |
-| `Quarter` | Formula | Auto-derived from Date |
+### Summary table columns
+
+| Date | Title | Category |
+|------|-------|----------|
+
+### Sub-page fields
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `Date` | Yes | Default to today |
+| `Situation` | Yes | What happened, briefly |
+| `What I learned` | Yes | The insight as a reusable principle |
+| `What I'll do differently` | Yes | Concrete behavioral change, not aspiration |
+| `Category` | Yes | `Technical`, `Communication`, `Process`, `People`, `Self-management` |
+
+### Sub-page content format
+
+```
+**Date:** YYYY-MM-DD
+
+**Situation:** ...
+
+**What I learned:** ...
+
+**What I'll do differently:** ...
+
+**Category:** Technical
+```
 
 ---
 
 ## Feedback
 
-| Property | Type | Notes |
-|---|---|---|
-| `Title` | Title | Short summary (e.g. "Slow to escalate blockers — from manager 1:1") |
-| `Date` | Date | Default to today |
-| `Source` | Rich text | Who gave it (role + relationship, e.g. "Manager", "Peer on backend team", "Skip-level") |
-| `Context` | Rich text | What prompted it — 1:1, review, project retro, offhand |
-| `Feedback` | Rich text | Verbatim quote where possible |
-| `Type` | Select | Options: `Positive`, `Constructive`, `Mixed` |
-| `My reaction` | Rich text | Initial gut response — keep separate from Feedback |
-| `Action taken or planned` | Rich text | What the user is doing with it |
-| `Quarter` | Formula | Auto-derived from Date |
+### Summary table columns
+
+| Date | Title | Source | Type |
+|------|-------|--------|------|
+
+### Sub-page fields
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `Date` | Yes | Default to today |
+| `Source` | Yes | Role + relationship (e.g. "Manager", "Peer on backend team") |
+| `Context` | Yes | What prompted it — 1:1, review, retro, offhand |
+| `Feedback` | Yes | Verbatim quote where possible |
+| `Type` | Yes | `Positive`, `Constructive`, `Mixed` |
+| `My reaction` | Recommended | Initial gut response — separate from the feedback itself |
+| `Action taken or planned` | Recommended | What the user is doing with it |
+
+### Sub-page content format
+
+```
+**Date:** YYYY-MM-DD
+
+**Source:** ...
+
+**Context:** ...
+
+**Feedback:** "..."
+
+**Type:** Constructive
+
+**My reaction:** ...
+
+**Action taken or planned:** ...
+```
 
 ---
 
 ## Discussion
 
-| Property | Type | Notes |
-|---|---|---|
-| `Title` | Title | The topic or question |
-| `Date opened` | Date | Default to today |
-| `Context` | Rich text | Why it's on the user's mind |
-| `My current thinking` | Rich text | Where the user is on this |
-| `Who to discuss with` | Rich text | Manager, mentor, peer, etc. |
-| `Status` | Select | Options: `Open`, `Discussed`, `Resolved` |
-| `Outcome` | Rich text | Filled in when status changes to Resolved |
-| `Date closed` | Date | Filled in when status changes to Resolved |
+### Summary table columns
+
+| Date | Title | Who to discuss with | Status |
+|------|-------|---------------------|--------|
+
+### Sub-page fields
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `Date opened` | Yes | Default to today |
+| `Context` | Yes | Why it's on the user's mind |
+| `My current thinking` | Recommended | Where the user is on this |
+| `Who to discuss with` | Recommended | Manager, mentor, peer, etc. |
+| `Status` | Yes | `Open`, `Discussed`, `Resolved` |
+| `Outcome` | When resolved | Fill in when Status → Resolved |
+| `Date closed` | When resolved | Fill in when Status → Resolved |
+
+### Sub-page content format
+
+```
+**Date opened:** YYYY-MM-DD
+
+**Context:** ...
+
+**My current thinking:** ...
+
+**Who to discuss with:** ...
+
+**Status:** Open
+```
+
+When resolving:
+
+```
+**Status:** Resolved
+
+**Outcome:** ...
+
+**Date closed:** YYYY-MM-DD
+```
 
 ---
 
-## Quarter formula
+## Summary table update procedure
 
-For databases with a `Quarter` formula property, use this Notion formula:
+When adding a new entry:
+1. Fetch the section page to get the current table content (exact string needed for `old_str`).
+2. Append a new row with `update_content`, using the sub-page URL as the title link.
+3. The `old_str` must be the last row of the table (or the header if the table is empty).
 
-```
-formatDate(prop("Date"), "YYYY") + "-Q" + toString(ceil(month(prop("Date")) / 3))
-```
-
-For the Discussion database, replace `prop("Date")` with `prop("Date opened")`.
-
-## Property creation via Notion MCP
-
-When creating or updating entries, the Notion MCP expects properties shaped like:
-
-- **Title**: `{ "title": [{ "text": { "content": "..." } }] }`
-- **Rich text**: `{ "rich_text": [{ "text": { "content": "..." } }] }`
-- **Date**: `{ "date": { "start": "YYYY-MM-DD" } }`
-- **Select**: `{ "select": { "name": "OptionName" } }`
-- **Multi-select**: `{ "multi_select": [{ "name": "Opt1" }, { "name": "Opt2" }] }`
-- **URL**: `{ "url": "https://..." }`
-
-Exact payload shapes may vary by MCP implementation — if a call fails, inspect the error and adjust, but start from this format.
+Example append for Wins:
+- `old_str`: the existing last row (or header line)
+- `new_str`: existing last row + `\n| 2026-04-22 | [Title](url) | Impact summary | Complete |`
