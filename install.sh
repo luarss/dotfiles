@@ -33,6 +33,23 @@ setup_profile() {
   echo "GEN   $HOME/$profile/settings.json"
 }
 
+install_skills() {
+  local skills_src="$DOTFILES/skills"
+  local skills_dst="$HOME/.claude/skills"
+  mkdir -p "$skills_dst"
+  for skill_dir in "$skills_src"/*/; do
+    local name
+    name="$(basename "$skill_dir")"
+    local dst="$skills_dst/$name"
+    if [ -e "$dst" ]; then
+      echo "SKIP  $dst (already exists)"
+    else
+      ln -s "$skill_dir" "$dst"
+      echo "LINK  $dst -> $skill_dir"
+    fi
+  done
+}
+
 install_zsh_plugin() {
   local repo="$1"
   local name="${2:-$(basename "$repo" .git)}"
@@ -57,6 +74,9 @@ symlink .env.example
 setup_profile ".claude" "ANTHROPIC_AUTH_TOKEN"
 setup_profile ".claude-second-profile" "Z_AI_AUTH_TOKEN"
 setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
+
+# Install skills into ~/.claude/skills (append-only)
+install_skills
 
 git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
