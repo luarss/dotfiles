@@ -72,7 +72,7 @@ symlink .env.example
 
 # Profiles: (profile_dir, env_var_name)
 setup_profile ".claude" "ANTHROPIC_AUTH_TOKEN"
-setup_profile ".claude-second-profile" "Z_AI_AUTH_TOKEN"
+setup_profile ".claude-second-profile" "DEEPSEEK_AUTH_TOKEN"
 setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
 
 # Install skills into ~/.claude/skills (append-only)
