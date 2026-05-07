@@ -26,6 +26,8 @@ setup_profile() {
   local env_var="$2"
   mkdir -p "$HOME/$profile"
   symlink "$profile/CLAUDE.md"
+  ln -sf "$DOTFILES/status-line.sh" "$HOME/$profile/status-line.sh"
+  echo "LINK  $HOME/$profile/status-line.sh -> $DOTFILES/status-line.sh"
   jq --arg token "${!env_var:-}" \
     '.env.ANTHROPIC_AUTH_TOKEN = $token' \
     "$DOTFILES/$profile/settings.json" \
