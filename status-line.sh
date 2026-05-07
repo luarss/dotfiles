@@ -86,7 +86,7 @@ get_git_info() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 get_token_metrics() {
-    [[ ! -f "$TRANSCRIPT" ]] && echo "0 0" && return 0
+    [[ ! -f "$TRANSCRIPT" ]] && echo "0 0 0" && return 0
 
     local in_tok cache_read cache_create out_tok total_in
 
@@ -101,7 +101,7 @@ get_token_metrics() {
     out_tok=${out_tok:-0}
 
     total_in=$((in_tok + cache_read + cache_create))
-    echo "$total_in $out_tok"
+    echo "$total_in $out_tok $cache_read"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,23 +169,29 @@ build_progress_bar() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 main() {
-    local total_in out_tok ctx_pct duration git_info
+    local total_in out_tok cache_read ctx_pct cache_pct duration git_info
 
-    read -r total_in out_tok <<< "$(get_token_metrics)"
+    read -r total_in out_tok cache_read <<< "$(get_token_metrics)"
     total_in=${total_in:-0}
     out_tok=${out_tok:-0}
+    cache_read=${cache_read:-0}
 
     ctx_pct=$(awk "BEGIN {printf \"%.1f\", ($total_in / $CTX_LIMIT) * 100}")
+    if [[ $total_in -gt 0 ]]; then
+        cache_pct=$(awk "BEGIN {printf \"%.0f\", ($cache_read / $total_in) * 100}")
+    else
+        cache_pct=0
+    fi
     duration=$(get_session_duration)
     git_info=$(get_git_info)
 
     # Output
-    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk]%b %s %b⏱ %s%b" \
+    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk ⚡%s%%]%b %s %b⏱ %s%b" \
         "$C_BOLD_GREEN" "$C_RESET" \
         "$C_CYAN" "$DIR" "$C_RESET" \
         "$git_info" \
         "$C_DIM" "$MODEL" "$C_RESET" \
-        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" "$C_RESET" \
+        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" "$cache_pct" "$C_RESET" \
         "$(build_progress_bar "$ctx_pct")" \
         "$C_CYAN" "$duration" "$C_RESET"
 }
