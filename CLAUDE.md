@@ -51,7 +51,4 @@ The script symlinks dotfiles into `$HOME` and generates `settings.json` for each
 
 ## Security
 
-All profile `settings.json` files deny reading `.env` files via permissions:
-```json
-"deny": ["Read(.env)", "Read(*.env*)", "Read(**/.env)"]
-```
+All profile `settings.json` files share a deny list that blocks destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, and key/pem files. See any `*/settings.json` for the canonical list.

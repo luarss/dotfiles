@@ -4,9 +4,18 @@
   },
   "permissions": {
     "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)",
       "Read(.env)",
-      "Read(*.env*)",
-      "Read(**/.env)"
+      "Read(.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(**/*credential*)",
+      "Read(**/*secret*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
     ],
     "defaultMode": "default"
   },
