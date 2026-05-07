@@ -95,7 +95,6 @@ get_token_metrics() {
     cache_create=$(grep -oE '"cache_creation_input_tokens":[0-9]+' "$TRANSCRIPT" 2>/dev/null | grep -oE '[0-9]+' | tail -1)
     out_tok=$(grep -oE '"output_tokens":[0-9]+' "$TRANSCRIPT" 2>/dev/null | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
 
-    # Default to 0 if empty
     in_tok=${in_tok:-0}
     cache_read=${cache_read:-0}
     cache_create=${cache_create:-0}
@@ -136,23 +135,6 @@ get_session_duration() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Cost Calculation
-# ─────────────────────────────────────────────────────────────────────────────
-
-calculate_cost() {
-    local total_in=$1 out_tok=$2
-    local price_in price_out
-
-    case "$MODEL_ID" in
-        *opus*)   price_in=15;   price_out=75 ;;
-        *haiku*)  price_in=0.25; price_out=1.25 ;;
-        *)        price_in=3;    price_out=15 ;;  # sonnet/default
-    esac
-
-    awk "BEGIN {printf \"%.2f\", ($total_in * $price_in / 1000000) + ($out_tok * $price_out / 1000000)}"
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Context Progress Bar
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -187,7 +169,7 @@ build_progress_bar() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 main() {
-    local total_in out_tok ctx_pct duration cost git_info
+    local total_in out_tok ctx_pct duration git_info
 
     read -r total_in out_tok <<< "$(get_token_metrics)"
     total_in=${total_in:-0}
@@ -195,16 +177,15 @@ main() {
 
     ctx_pct=$(awk "BEGIN {printf \"%.1f\", ($total_in / $CTX_LIMIT) * 100}")
     duration=$(get_session_duration)
-    cost=$(calculate_cost "$total_in" "$out_tok")
     git_info=$(get_git_info)
 
     # Output
-    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk \$%s]%b %s %b⏱ %s%b" \
+    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk]%b %s %b⏱ %s%b" \
         "$C_BOLD_GREEN" "$C_RESET" \
         "$C_CYAN" "$DIR" "$C_RESET" \
         "$git_info" \
         "$C_DIM" "$MODEL" "$C_RESET" \
-        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" "$cost" "$C_RESET" \
+        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" "$C_RESET" \
         "$(build_progress_bar "$ctx_pct")" \
         "$C_CYAN" "$duration" "$C_RESET"
 }
