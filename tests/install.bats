@@ -10,7 +10,7 @@ setup() {
   INSTALL_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/install.sh"
 
   # Store original environment
-  ORIGINAL_Z_AI_TOKEN="${Z_AI_AUTH_TOKEN:-}"
+  ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
   ORIGINAL_DASHSCOPE_TOKEN="${DASHSCOPE_AUTH_TOKEN:-}"
 }
 
@@ -19,7 +19,7 @@ teardown() {
   rm -rf "$TEST_HOME"
 
   # Restore environment
-  export Z_AI_AUTH_TOKEN="$ORIGINAL_Z_AI_TOKEN"
+  export DEEPSEEK_AUTH_TOKEN="$ORIGINAL_DEEPSEEK_TOKEN"
   export DASHSCOPE_AUTH_TOKEN="$ORIGINAL_DASHSCOPE_TOKEN"
 }
 
@@ -63,7 +63,7 @@ teardown() {
 }
 
 @test "generates_settings_with_token" {
-  export Z_AI_AUTH_TOKEN="test-z-ai-token-12345"
+  export DEEPSEEK_AUTH_TOKEN="test-deepseek-token-12345"
 
   run bash "$INSTALL_SCRIPT"
 
@@ -72,7 +72,7 @@ teardown() {
   # Check that token was injected
   local token
   token=$(jq -r '.env.ANTHROPIC_AUTH_TOKEN' "$HOME/.claude-second-profile/settings.json")
-  [ "$token" = "test-z-ai-token-12345" ]
+  [ "$token" = "test-deepseek-token-12345" ]
 }
 
 @test "generates_settings_with_dashscope_token" {
@@ -90,7 +90,7 @@ teardown() {
 
 @test "generates_settings_with_empty_token" {
   # Unset tokens (or set empty)
-  unset Z_AI_AUTH_TOKEN
+  unset DEEPSEEK_AUTH_TOKEN
   unset DASHSCOPE_AUTH_TOKEN
 
   run bash "$INSTALL_SCRIPT"
@@ -108,14 +108,14 @@ teardown() {
 }
 
 @test "settings_preserves_other_config" {
-  export Z_AI_AUTH_TOKEN="my-token"
+  export DEEPSEEK_AUTH_TOKEN="my-token"
 
   run bash "$INSTALL_SCRIPT"
 
   # Check that other settings are preserved from template
   local base_url
   base_url=$(jq -r '.env.ANTHROPIC_BASE_URL' "$HOME/.claude-second-profile/settings.json")
-  [ "$base_url" = "https://api.z.ai/api/anthropic" ]
+  [ "$base_url" = "https://api.deepseek.com/anthropic" ]
 
   local model
   model=$(jq -r '.model' "$HOME/.claude-second-profile/settings.json")
@@ -132,7 +132,7 @@ teardown() {
 }
 
 @test "idempotent" {
-  export Z_AI_AUTH_TOKEN="same-token"
+  export DEEPSEEK_AUTH_TOKEN="same-token"
   export DASHSCOPE_AUTH_TOKEN="same-dashscope-token"
 
   # Run twice
