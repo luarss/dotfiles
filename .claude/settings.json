@@ -31,6 +31,14 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/symlink-memory.sh" }
+        ]
+      }
     ]
   },
   "statusLine": {

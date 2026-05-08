@@ -166,3 +166,51 @@ teardown() {
   [[ "$output" == *"LINK"*".zshrc"* ]]
   [[ "$output" == *"Done."* ]]
 }
+
+@test "symlinks_claude_hooks" {
+  run bash "$INSTALL_SCRIPT"
+
+  local hooks_src
+  hooks_src="$(dirname "$INSTALL_SCRIPT")/.claude/hooks"
+
+  # Every .sh file in source should be symlinked into ~/.claude/hooks
+  for hook in "$hooks_src"/*.sh; do
+    [ -e "$hook" ] || continue
+    local name dst
+    name="$(basename "$hook")"
+    dst="$HOME/.claude/hooks/$name"
+    [ -L "$dst" ]
+    [ "$(readlink "$dst")" = "$hook" ]
+  done
+}
+
+@test "hooks_install_idempotent" {
+  run bash "$INSTALL_SCRIPT"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local hooks_src
+  hooks_src="$(dirname "$INSTALL_SCRIPT")/.claude/hooks"
+
+  for hook in "$hooks_src"/*.sh; do
+    [ -e "$hook" ] || continue
+    local name dst
+    name="$(basename "$hook")"
+    dst="$HOME/.claude/hooks/$name"
+    [ -L "$dst" ]
+    [ "$(readlink "$dst")" = "$hook" ]
+  done
+}
+
+@test "hooks_install_overwrites_stale_symlink" {
+  # Pre-create a stale symlink pointing somewhere wrong
+  mkdir -p "$HOME/.claude/hooks"
+  ln -s /tmp/nonexistent-hook.sh "$HOME/.claude/hooks/symlink-memory.sh"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local expected
+  expected="$(dirname "$INSTALL_SCRIPT")/.claude/hooks/symlink-memory.sh"
+  [ "$(readlink "$HOME/.claude/hooks/symlink-memory.sh")" = "$expected" ]
+}

@@ -52,6 +52,21 @@ install_skills() {
   done
 }
 
+install_hooks() {
+  local hooks_src="$DOTFILES/.claude/hooks"
+  local hooks_dst="$HOME/.claude/hooks"
+  [ -d "$hooks_src" ] || return 0
+  mkdir -p "$hooks_dst"
+  for hook in "$hooks_src"/*.sh; do
+    [ -e "$hook" ] || continue
+    local name dst
+    name="$(basename "$hook")"
+    dst="$hooks_dst/$name"
+    ln -sf "$hook" "$dst"
+    echo "LINK  $dst -> $hook"
+  done
+}
+
 install_zsh_plugin() {
   local repo="$1"
   local name="${2:-$(basename "$repo" .git)}"
@@ -79,6 +94,9 @@ setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
 
 # Install skills into ~/.claude/skills (append-only)
 install_skills
+
+# Install hooks into ~/.claude/hooks (per-file symlinks, idempotent)
+install_hooks
 
 git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
