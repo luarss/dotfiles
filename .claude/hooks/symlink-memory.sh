@@ -3,6 +3,10 @@
 # ~/.claude*/projects/<encoded>/memory/, mirror it into the Obsidian vault and
 # append an entry to the vault's Index.md (if it exists).
 #
+# Mirrors via file copy (not symlink) so the notes repo renders on GitHub.
+# The mirror is one-way: edits in the Obsidian copy do NOT propagate back to
+# the ~/.claude memory source.
+#
 # Idempotent: skips if the memory file is already referenced in Index.md, so
 # manual edits to existing entries are preserved.
 #
@@ -18,16 +22,25 @@ CWD=$(jq -r '.cwd // empty' <<<"$PAYLOAD")
 [[ "$(basename "$FILE_PATH")" == "MEMORY.md" ]] && exit 0
 [[ -f "$FILE_PATH" ]] || exit 0
 
+# Skip cross-project edits: only mirror when the session's cwd is the project
+# the memory belongs to. Compare the encoded form of CWD against the project
+# segment of FILE_PATH. The encoding is lossy (slashes and dashes collide),
+# so deriving FRIENDLY from FILE_PATH alone isn't reliable — CWD is the
+# unambiguous source of the project's basename.
+ENCODED_PROJECT=$(basename "$(dirname "$(dirname "$FILE_PATH")")")
+ENCODED_CWD="${CWD//\//-}"
+[[ "$ENCODED_PROJECT" == "$ENCODED_CWD" ]] || exit 0
+
 FRIENDLY=$(basename "$CWD")
 FRIENDLY="${FRIENDLY//-/_}"
 LEARNING_DIR="$HOME/work/notes/NUS-Enterprise/Reflections/Learning"
 TARGET="$LEARNING_DIR/memory_$FRIENDLY"
 
-# 1) Mirror as symlink
+# 1) Mirror as a file copy (not symlink) so GitHub can render it
 mkdir -p "$TARGET"
-LINK="$TARGET/$(basename "$FILE_PATH")"
-[[ -L "$LINK" || -e "$LINK" ]] && rm -f "$LINK"
-ln -s "$FILE_PATH" "$LINK"
+DEST="$TARGET/$(basename "$FILE_PATH")"
+[[ -L "$DEST" || -e "$DEST" ]] && rm -f "$DEST"
+cp "$FILE_PATH" "$DEST"
 
 # 2) Update Index.md (no-op if missing)
 INDEX="$LEARNING_DIR/Index.md"
@@ -98,7 +111,7 @@ else
   # No section yet — append one at EOF
   {
     printf '\n%s\n\n' "$SECTION_HEADER"
-    printf 'Symlinks into `memory_%s/` — live mirror of `~/.claude/projects/%s/memory/`. Edits here update the source.\n\n' \
+    printf 'Copies into `memory_%s/` — one-way mirror of `~/.claude/projects/%s/memory/`. Edits here are NOT propagated back to the source.\n\n' \
       "$FRIENDLY" "$ENCODED_NAME"
     printf '%s\n' "$BULLET"
   } >> "$INDEX"
