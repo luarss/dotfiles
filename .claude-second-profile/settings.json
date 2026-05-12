@@ -57,6 +57,10 @@
     "chrome-devtools-mcp@claude-plugins-official": true
   },
   "alwaysThinkingEnabled": true,
-  "promptSuggestionEnabled": false
+  "promptSuggestionEnabled": false,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
 }
 
