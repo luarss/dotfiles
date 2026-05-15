@@ -30,6 +30,19 @@ CONTEXT_CRIT_PCT=90
 DEFAULT_CTX_LIMIT=200000
 CTX_LIMIT_1M=1000000
 
+# Cache hit rate thresholds.
+# ~90% is the healthy target on active sessions; the Claude Code team alerts
+# on cache breaks. Dropping ~20 points typically signals cache busting (e.g.
+# resumed session, timestamp in system prompt), which can turn a $0.50/hr
+# session into $5–10/hr.
+# Refs:
+#   https://claude.com/blog/lessons-from-building-claude-code-prompt-caching-is-everything
+#   https://www.claudecodecamp.com/p/how-prompt-caching-actually-works-in-claude-code
+#   https://github.com/cnighswonger/claude-code-cache-fix
+CACHE_WARN_PCT=90
+CACHE_CRIT_PCT=70
+CACHE_MIN_TOKENS=10000
+
 # Colors (using $'...' for proper escape sequence interpretation)
 C_RESET=$'\033[0m'
 C_BOLD_GREEN=$'\033[1;32m'
@@ -170,6 +183,7 @@ build_progress_bar() {
 
 main() {
     local total_in out_tok cache_read ctx_pct cache_pct duration git_info
+    local cache_color cache_warn=""
 
     read -r total_in out_tok cache_read <<< "$(get_token_metrics)"
     total_in=${total_in:-0}
@@ -182,16 +196,31 @@ main() {
     else
         cache_pct=0
     fi
+
+    # Tiered cache-hit warning. Stays quiet until the session has enough
+    # tokens for the ratio to be informative.
+    cache_color=$C_DIM
+    if [[ $total_in -ge $CACHE_MIN_TOKENS ]]; then
+        if [[ $cache_pct -lt $CACHE_CRIT_PCT ]]; then
+            cache_color=$C_RED
+            cache_warn=" ${C_RED}⚠ EXPENSIVE: low cache hit${C_RESET}"
+        elif [[ $cache_pct -lt $CACHE_WARN_PCT ]]; then
+            cache_color=$C_YELLOW
+        fi
+    fi
+
     duration=$(get_session_duration)
     git_info=$(get_git_info)
 
     # Output
-    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk ⚡%s%%]%b %s %b⏱ %s%b" \
+    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b" \
         "$C_BOLD_GREEN" "$C_RESET" \
         "$C_CYAN" "$DIR" "$C_RESET" \
         "$git_info" \
         "$C_DIM" "$MODEL" "$C_RESET" \
-        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" "$cache_pct" "$C_RESET" \
+        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" \
+        "$cache_color" "$cache_pct" "$C_RESET" "$C_DIM" "$C_RESET" \
+        "$cache_warn" \
         "$(build_progress_bar "$ctx_pct")" \
         "$C_CYAN" "$duration" "$C_RESET"
 }
