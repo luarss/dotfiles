@@ -127,6 +127,7 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
+export PATH="$HOME/.local/bin:$PATH"
 
 # ------ N-Claude profile system ----
 _claude_with_profile() {
