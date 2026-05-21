@@ -6,6 +6,7 @@ tap "hashicorp/tap"
 # Formulae (CLI tools)
 brew "gh"
 brew "ripgrep"
+brew "tesseract"
 brew "hashicorp/tap/terraform"
 
 # Casks (GUI apps / pre-built binaries)
