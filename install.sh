@@ -67,6 +67,23 @@ install_hooks() {
   done
 }
 
+install_commands() {
+  local commands_src="$DOTFILES/commands"
+  [ -d "$commands_src" ] || return 0
+  for profile in "${_claude_profiles[@]}"; do
+    local commands_dst="$HOME/$profile/commands"
+    mkdir -p "$commands_dst"
+    for cmd in "$commands_src"/*.md; do
+      [ -e "$cmd" ] || continue
+      local name dst
+      name="$(basename "$cmd")"
+      dst="$commands_dst/$name"
+      ln -sf "$cmd" "$dst"
+      echo "LINK  $dst -> $cmd"
+    done
+  done
+}
+
 install_zsh_plugin() {
   local repo="$1"
   local name="${2:-$(basename "$repo" .git)}"
@@ -92,11 +109,17 @@ setup_profile ".claude" "ANTHROPIC_AUTH_TOKEN"
 setup_profile ".claude-second-profile" "DEEPSEEK_AUTH_TOKEN"
 setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
 
+# Profile directories — used by install_commands to fan out shared commands
+_claude_profiles=(".claude" ".claude-second-profile" ".claude-third-profile")
+
 # Install skills into ~/.claude/skills (append-only)
 install_skills
 
 # Install hooks into ~/.claude/hooks (per-file symlinks, idempotent)
 install_hooks
+
+# Install shared slash commands into each profile's commands/ dir
+install_commands
 
 git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
