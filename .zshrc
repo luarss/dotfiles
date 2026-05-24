@@ -147,3 +147,7 @@ _claude_profiles=(
 for name dir in "${_claude_profiles[@]}"; do
   eval "${name}() { _claude_with_profile \"\$HOME/${dir}\" \"\$@\"; }"
 done
+
+# zoxide /fzf
+eval "$(zoxide init zsh)"
+source <(fzf --zsh)
