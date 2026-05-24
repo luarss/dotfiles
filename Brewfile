@@ -7,6 +7,8 @@ tap "hashicorp/tap"
 brew "gh"
 brew "ripgrep"
 brew "tesseract"
+brew "fzf"
+brew "zoxide"
 brew "hashicorp/tap/terraform"
 
 # Casks (GUI apps / pre-built binaries)
