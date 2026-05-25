@@ -9,6 +9,7 @@ brew "ripgrep"
 brew "tesseract"
 brew "fzf"
 brew "zoxide"
+brew "sevenzip"
 brew "hashicorp/tap/terraform"
 
 # Casks (GUI apps / pre-built binaries)
