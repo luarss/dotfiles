@@ -13,5 +13,6 @@ brew "p7zip"
 brew "hashicorp/tap/terraform"
 
 # Casks (GUI apps / pre-built binaries)
+cask "antigravity-cli"
 cask "claude-code"
 cask "gcloud-cli"
