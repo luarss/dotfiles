@@ -10,6 +10,7 @@ brew "tesseract"
 brew "fzf"
 brew "zoxide"
 brew "p7zip"
+brew "ffmpeg"
 brew "hashicorp/tap/terraform"
 
 # Casks (GUI apps / pre-built binaries)
