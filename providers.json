@@ -1,0 +1,52 @@
+{
+  "default": {
+    "dir": ".claude",
+    "aliases": ["claude"],
+    "token": "ANTHROPIC_AUTH_TOKEN",
+    "thirdParty": false,
+    "overrides": {
+      "model": "opus[1m]",
+      "effortLevel": "high",
+      "hooks": {
+        "PostToolUse": [
+          {
+            "matcher": "Write|Edit",
+            "hooks": [
+              { "type": "command", "command": "bash ~/.claude/hooks/symlink-memory.sh" }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "deepseek": {
+    "dir": ".claude-second-profile",
+    "aliases": ["s-claude"],
+    "token": "DEEPSEEK_AUTH_TOKEN",
+    "thirdParty": true,
+    "baseUrl": "https://api.deepseek.com/anthropic",
+    "models": {
+      "haiku": "deepseek-v4-flash",
+      "sonnet": "deepseek-v4-pro[1m]",
+      "opus": "deepseek-v4-pro[1m]"
+    },
+    "overrides": {
+      "model": "opus",
+      "alwaysThinkingEnabled": true,
+      "promptSuggestionEnabled": false
+    }
+  },
+  "mimo": {
+    "dir": ".claude-third-profile",
+    "aliases": ["d-claude"],
+    "token": "XIAOMI_AUTH_TOKEN",
+    "thirdParty": true,
+    "baseUrl": "https://api.xiaomimimo.com/anthropic",
+    "models": "mimo-v2.5-pro",
+    "overrides": {
+      "model": "opus",
+      "alwaysThinkingEnabled": true,
+      "promptSuggestionEnabled": false
+    }
+  }
+}

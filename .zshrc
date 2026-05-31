@@ -132,21 +132,9 @@ alias ccusage="npx ccusage"
 export PATH="$HOME/.local/bin:$PATH"
 
 # ------ N-Claude profile system ----
-_claude_with_profile() {
-  export CLAUDE_CONFIG_DIR="$1"
-  command claude "${@:2}"
-}
-
-# Define profiles: (wrapper_name, profile_dir)
-_claude_profiles=(
-  "claude"            ".claude"
-  "s-claude"          ".claude-second-profile"
-  "d-claude"          ".claude-third-profile"
-)
-
-for name dir in "${_claude_profiles[@]}"; do
-  eval "${name}() { _claude_with_profile \"\$HOME/${dir}\" \"\$@\"; }"
-done
+# Wrappers (`cl <provider>` dispatcher + claude/s-claude/d-claude aliases) are
+# generated from providers.json by install.sh into ~/.claude-profiles.zsh.
+[[ -f "$HOME/.claude-profiles.zsh" ]] && source "$HOME/.claude-profiles.zsh"
 
 # zoxide /fzf
 eval "$(zoxide init zsh)"
