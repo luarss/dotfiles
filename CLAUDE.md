@@ -12,7 +12,7 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `install.sh` — Bootstrap script that symlinks dotfiles and generates secret-bearing configs
 - `.claude/` — Claude Code config for the default profile (`~/.claude`)
 - `.claude-second-profile/` — Claude Code config for a second profile (`~/.claude-second-profile`)
-- `.claude-third-profile/` — Claude Code config for DashScope/Aliyun profile (`~/.claude-third-profile`)
+- `.claude-third-profile/` — Claude Code config for a third profile (`~/.claude-third-profile`), pointed at an alternate Anthropic-compatible provider
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
 
 ## N-Claude Profile System
@@ -22,7 +22,7 @@ The `.zshrc` defines a `_claude_with_profile` helper and wrapper functions to sw
 ```zsh
 claude()    # uses ~/.claude (default)
 s-claude()  # uses ~/.claude-second-profile
-d-claude()  # uses ~/.claude-third-profile (DashScope/Aliyun)
+d-claude()  # uses ~/.claude-third-profile (alternate provider)
 ```
 
 ### Adding a New Profile
@@ -38,7 +38,7 @@ The `install.sh` symlinks each profile's `CLAUDE.md` to `$HOME`, so edits in the
 ```bash
 # Set required env vars first
 export Z_AI_AUTH_TOKEN="..."        # for s-claude
-export DASHSCOPE_AUTH_TOKEN="..."   # for d-claude
+export XIAOMI_AUTH_TOKEN="..."      # for d-claude
 
 ./install.sh
 ```

@@ -107,7 +107,7 @@ symlink .env.example
 # Profiles: (profile_dir, env_var_name)
 setup_profile ".claude" "ANTHROPIC_AUTH_TOKEN"
 setup_profile ".claude-second-profile" "DEEPSEEK_AUTH_TOKEN"
-setup_profile ".claude-third-profile" "DASHSCOPE_AUTH_TOKEN"
+setup_profile ".claude-third-profile" "XIAOMI_AUTH_TOKEN"
 
 # Profile directories — used by install_commands to fan out shared commands
 _claude_profiles=(".claude" ".claude-second-profile" ".claude-third-profile")

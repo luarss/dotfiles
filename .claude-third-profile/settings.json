@@ -1,11 +1,11 @@
 {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "",
-    "ANTHROPIC_BASE_URL": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5.1",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.5-plus",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5",
-    "ANTHROPIC_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_BASE_URL": "https://api.xiaomimimo.com/anthropic",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "mimo-v2.5-pro",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "mimo-v2.5-pro",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "mimo-v2.5-pro",
+    "ANTHROPIC_MODEL": "mimo-v2.5-pro",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "DISABLE_TELEMETRY": "1",
