@@ -167,4 +167,15 @@ echo "HOOK  core.hooksPath -> .githooks"
 install_zsh_plugin "zsh-users/zsh-autosuggestions"
 install_zsh_plugin "zsh-users/zsh-syntax-highlighting"
 
+# Personal laptops use sonnet (lower subscription limits); work machine keeps opus[1m].
+# Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
+WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-Macbook-Air}"
+if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+  jq '.model = "sonnet"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
+    && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
+  echo "SET   $HOME/.claude/settings.json model -> sonnet (personal)"
+else
+  echo "SKIP  sonnet switch (work machine — keeping opus[1m])"
+fi
+
 echo "Done."

@@ -206,6 +206,47 @@ teardown() {
   done
 }
 
+@test "sonnet_switch_applied_on_personal_laptop" {
+  # Mock hostname to return something other than the work hostname
+  hostname() { echo "personal-macbook-pro"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+
+  local model
+  model=$(jq -r '.model' "$HOME/.claude/settings.json")
+  [ "$model" = "sonnet" ]
+  [[ "$output" == *"SET"*"model -> sonnet (personal)"* ]]
+}
+
+@test "sonnet_switch_skipped_on_work_machine" {
+  # Mock hostname to return the default work hostname
+  hostname() { echo "Shuis-Macbook-Air"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+
+  local model
+  model=$(jq -r '.model' "$HOME/.claude/settings.json")
+  [ "$model" = "opus[1m]" ]
+  [[ "$output" == *"SKIP"*"keeping opus[1m]"* ]]
+}
+
+@test "sonnet_switch_respects_custom_work_hostname" {
+  # Custom work hostname via env var
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+
+  hostname() { echo "custom-corp-laptop"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+
+  local model
+  model=$(jq -r '.model' "$HOME/.claude/settings.json")
+  [ "$model" = "opus[1m]" ]
+  [[ "$output" == *"SKIP"*"keeping opus[1m]"* ]]
+}
+
 @test "hooks_install_overwrites_stale_symlink" {
   # Pre-create a stale symlink pointing somewhere wrong
   mkdir -p "$HOME/.claude/hooks"
