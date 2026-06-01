@@ -39,6 +39,7 @@ generate_profiles() {
 
     mkdir -p "$HOME/$dir"
     symlink "$dir/CLAUDE.md"
+    symlink "$dir/AGENTS.md"
     ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
     jq -n --argjson base "$base" --argjson p "$pentry" --arg token "$token" \
