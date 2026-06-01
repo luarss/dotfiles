@@ -9,9 +9,13 @@ setup() {
   # Path to the install script
   INSTALL_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/install.sh"
 
+  # Isolate from the repo's real .env so tokens come only from the test env.
+  # /dev/null is not a regular file, so install.sh skips sourcing it.
+  export DOTFILES_ENV=/dev/null
+
   # Store original environment
   ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
-  ORIGINAL_DASHSCOPE_TOKEN="${DASHSCOPE_AUTH_TOKEN:-}"
+  ORIGINAL_XIAOMI_TOKEN="${XIAOMI_AUTH_TOKEN:-}"
 }
 
 teardown() {
@@ -20,7 +24,7 @@ teardown() {
 
   # Restore environment
   export DEEPSEEK_AUTH_TOKEN="$ORIGINAL_DEEPSEEK_TOKEN"
-  export DASHSCOPE_AUTH_TOKEN="$ORIGINAL_DASHSCOPE_TOKEN"
+  export XIAOMI_AUTH_TOKEN="$ORIGINAL_XIAOMI_TOKEN"
 }
 
 @test "symlink_creates_new" {
@@ -75,8 +79,8 @@ teardown() {
   [ "$token" = "test-deepseek-token-12345" ]
 }
 
-@test "generates_settings_with_dashscope_token" {
-  export DASHSCOPE_AUTH_TOKEN="test-dashscope-token-67890"
+@test "generates_settings_with_xiaomi_token" {
+  export XIAOMI_AUTH_TOKEN="test-xiaomi-token-67890"
 
   run bash "$INSTALL_SCRIPT"
 
@@ -85,13 +89,13 @@ teardown() {
   # Check that token was injected
   local token
   token=$(jq -r '.env.ANTHROPIC_AUTH_TOKEN' "$HOME/.claude-third-profile/settings.json")
-  [ "$token" = "test-dashscope-token-67890" ]
+  [ "$token" = "test-xiaomi-token-67890" ]
 }
 
 @test "generates_settings_with_empty_token" {
   # Unset tokens (or set empty)
   unset DEEPSEEK_AUTH_TOKEN
-  unset DASHSCOPE_AUTH_TOKEN
+  unset XIAOMI_AUTH_TOKEN
 
   run bash "$INSTALL_SCRIPT"
 
@@ -133,7 +137,7 @@ teardown() {
 
 @test "idempotent" {
   export DEEPSEEK_AUTH_TOKEN="same-token"
-  export DASHSCOPE_AUTH_TOKEN="same-dashscope-token"
+  export XIAOMI_AUTH_TOKEN="same-xiaomi-token"
 
   # Run twice
   run bash "$INSTALL_SCRIPT"
@@ -149,7 +153,7 @@ teardown() {
   [ "$token" = "same-token" ]
 
   token=$(jq -r '.env.ANTHROPIC_AUTH_TOKEN' "$HOME/.claude-third-profile/settings.json")
-  [ "$token" = "same-dashscope-token" ]
+  [ "$token" = "same-xiaomi-token" ]
 }
 
 @test "symlinks_claude_md_for_profiles" {

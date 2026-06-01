@@ -3,10 +3,11 @@
 
 DOTFILES="$(cd "$(dirname "$0")" && pwd)"
 
-# Load tokens from .env if present
-if [ -f "$DOTFILES/.env" ]; then
+# Load tokens from .env if present (override path via DOTFILES_ENV, e.g. for tests)
+ENV_FILE="${DOTFILES_ENV:-$DOTFILES/.env}"
+if [ -f "$ENV_FILE" ]; then
   set -a
-  . "$DOTFILES/.env"
+  . "$ENV_FILE"
   set +a
 fi
 
