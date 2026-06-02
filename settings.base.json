@@ -47,12 +47,12 @@
     "command": "~/.claude/status-line.sh"
   },
   "enabledPlugins": {
-    "code-review@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
+    "code-review@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true,
-    "chrome-devtools-mcp@claude-plugins-official": true
+    "code-simplifier@claude-plugins-official": false,
+    "chrome-devtools-mcp@claude-plugins-official": false
   },
   "attribution": {
     "commit": "",
