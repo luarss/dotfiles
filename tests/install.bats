@@ -221,7 +221,7 @@ teardown() {
 
 @test "sonnet_switch_skipped_on_work_machine" {
   # Mock hostname to return the default work hostname
-  hostname() { echo "Shuis-Macbook-Air"; }
+  hostname() { echo "Shuis-MacBook-Air"; }
   export -f hostname
 
   run bash "$INSTALL_SCRIPT"
