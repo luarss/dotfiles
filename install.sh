@@ -78,15 +78,17 @@ install_skills() {
   local skills_dst="$HOME/.claude/skills"
   mkdir -p "$skills_dst"
   for skill_dir in "$skills_src"/*/; do
-    local name
+    local name dst
     name="$(basename "$skill_dir")"
-    local dst="$skills_dst/$name"
-    if [ -e "$dst" ]; then
-      echo "SKIP  $dst (already exists)"
-    else
-      ln -s "$skill_dir" "$dst"
-      echo "LINK  $dst -> $skill_dir"
+    dst="$skills_dst/$name"
+    # Leave a real (manually installed) dir alone; repair stale/dangling symlinks.
+    # -n so an existing symlink-to-dir is replaced, not followed into.
+    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+      echo "SKIP  $dst (exists and is not a symlink)"
+      continue
     fi
+    ln -sfn "$skill_dir" "$dst"
+    echo "LINK  $dst -> $skill_dir"
   done
 }
 

@@ -259,3 +259,46 @@ teardown() {
   expected="$(dirname "$INSTALL_SCRIPT")/.claude/hooks/symlink-memory.sh"
   [ "$(readlink "$HOME/.claude/hooks/symlink-memory.sh")" = "$expected" ]
 }
+
+@test "symlinks_claude_skills" {
+  run bash "$INSTALL_SCRIPT"
+
+  local skills_src
+  skills_src="$(dirname "$INSTALL_SCRIPT")/skills"
+
+  # Every skill directory in source should be symlinked into ~/.claude/skills
+  for skill_dir in "$skills_src"/*/; do
+    [ -e "$skill_dir" ] || continue
+    local name dst
+    name="$(basename "$skill_dir")"
+    dst="$HOME/.claude/skills/$name"
+    [ -L "$dst" ]
+    [ "$(readlink "$dst")" = "$skill_dir" ]
+  done
+}
+
+@test "skills_install_overwrites_stale_symlink" {
+  # Pre-create a stale symlink where a skill should land
+  mkdir -p "$HOME/.claude/skills"
+  ln -s /tmp/nonexistent-skill "$HOME/.claude/skills/obsidian-journal"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local expected
+  expected="$(dirname "$INSTALL_SCRIPT")/skills/obsidian-journal/"
+  [ "$(readlink "$HOME/.claude/skills/obsidian-journal")" = "$expected" ]
+}
+
+@test "skills_install_skips_real_dir" {
+  # A manually installed (real) skill dir must be left untouched
+  mkdir -p "$HOME/.claude/skills/obsidian-journal"
+  touch "$HOME/.claude/skills/obsidian-journal/local-marker"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  [ ! -L "$HOME/.claude/skills/obsidian-journal" ]
+  [ -f "$HOME/.claude/skills/obsidian-journal/local-marker" ]
+  [[ "$output" == *"SKIP"*"obsidian-journal (exists and is not a symlink)"* ]]
+}

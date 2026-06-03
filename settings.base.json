@@ -44,7 +44,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/status-line.sh"
+    "command": "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/status-line.sh"
   },
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
