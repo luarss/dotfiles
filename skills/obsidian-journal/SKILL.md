@@ -1,6 +1,6 @@
 ---
 name: claudecode-obsidian-journal
-description: Log structured employment-diary entries to Obsidian via slash commands. Use this skill whenever the user invokes /win, /learning, /feedback, or /discussion — or asks to log, record, or add an entry to their Wins, Learning, Feedback, or Discussion journal. Also use when the user wants to query, search, or review past diary entries (e.g., "show me my Q2 wins", "what feedback have I gotten about communication"). Triggers on any mention of "employment diary", "work journal", "career log", or the four page names above, even if the slash command syntax isn't used.
+description: Log and query employment-diary entries (Wins, Learning, Feedback, Discussion) in Obsidian. Use for /win, /learning, /feedback, /discussion, or any ask to log, record, search, or review entries in the diary, work journal, or career log.
 ---
 
 # Claude Code Obsidian Journal

@@ -1,5 +1,5 @@
 ---
-description: Stage all, commit with Conventional Commits message, push
+description: Stage, commit (Conventional Commits), push
 ---
 
 1. Run in parallel: `git status`, `git diff`, `git diff --cached`, `git log -n 5 --oneline`.
