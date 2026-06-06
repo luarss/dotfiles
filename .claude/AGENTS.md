@@ -55,5 +55,8 @@ moving on. Fix any type errors or missing imports immediately.
 - Check `package.json` for scripts before running commands manually
 - Prefer `pnpm` > `yarn` > `npm`
 
+## Dependencies
+- Always pin your dependencies (Github actions, package versions) to the commit SHA wherever possible.
+
 ## Things to Avoid
 - Don't over-explain unless I ask for it

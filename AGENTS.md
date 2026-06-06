@@ -60,3 +60,24 @@ The script symlinks dotfiles into `$HOME`, generates each profile's `settings.js
 ## Security
 
 Every profile's `settings.json` is generated from `settings.base.json`, which carries the shared deny list blocking destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, and key/pem files. Edit `settings.base.json` to change the policy for all profiles at once.
+
+## Dependency Locking (Supply Chain Hygiene)
+
+Pin every external dependency to an immutable reference. Never use mutable tags or branches in any automated install path.
+
+**GitHub Actions** — pin to a full commit SHA, not a tag. Annotate with the tag for readability.
+```yaml
+- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+```
+Resolve: `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha`
+Currently unpinned: `actions/checkout` in `.github/workflows/test.yml`
+
+**Zsh plugins** (`install_zsh_plugin` in `install.sh`) — clone at a specific tag and assert the SHA:
+```bash
+git clone --depth=1 --branch <tag> "https://github.com/$repo.git" "$plugin_dir"
+actual=$(git -C "$plugin_dir" rev-parse HEAD)
+[ "$actual" = "<expected-sha>" ] || { echo "SHA mismatch for $repo"; exit 1; }
+```
+Currently unpinned: `zsh-users/zsh-autosuggestions`, `zsh-users/zsh-syntax-highlighting`
+
+**Homebrew** — commit `Brewfile.lock.json` (written by `brew bundle install`) and install with `--no-upgrade` to prevent silent upgrades. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.
