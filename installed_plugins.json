@@ -1,46 +1,6 @@
 {
   "version": 2,
   "plugins": {
-    "model-trainer@huggingface-skills": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/huggingface-skills/model-trainer/1.0.0",
-        "version": "1.0.0",
-        "installedAt": "2025-12-11T05:02:26.018Z",
-        "lastUpdated": "2025-12-11T05:02:26.018Z",
-        "gitCommitSha": "636122b22468d5419f54b5c3013ff8f9b53982a3"
-      }
-    ],
-    "code-review@claude-plugins-official": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/code-review/unknown",
-        "version": "unknown",
-        "installedAt": "2026-02-23T15:26:32.760Z",
-        "lastUpdated": "2026-05-16T01:17:18.629Z",
-        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
-      }
-    ],
-    "engram@zimalabs": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/zimalabs/engram/1.20.0",
-        "version": "1.20.0",
-        "installedAt": "2026-02-26T05:31:52.006Z",
-        "lastUpdated": "2026-02-26T05:31:52.006Z",
-        "gitCommitSha": "b082e1d912e74769bbb4460ffb3dcac92061a9eb"
-      }
-    ],
-    "frontend-design@claude-plugins-official": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown",
-        "version": "unknown",
-        "installedAt": "2026-02-27T08:20:59.481Z",
-        "lastUpdated": "2026-05-16T01:17:18.629Z",
-        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-      }
-    ],
     "typescript-lsp@claude-plugins-official": [
       {
         "scope": "user",
@@ -51,47 +11,6 @@
         "gitCommitSha": "205b6e0b30366a969412d9aab7b99bea99d58db1"
       }
     ],
-    "code-simplifier@claude-plugins-official": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/code-simplifier/1.0.0",
-        "version": "1.0.0",
-        "installedAt": "2026-02-27T09:27:06.027Z",
-        "lastUpdated": "2026-05-16T01:17:18.629Z",
-        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-      }
-    ],
-    "ralph-loop@claude-plugins-official": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/ralph-loop/1.0.0",
-        "version": "1.0.0",
-        "installedAt": "2026-02-27T09:27:06.056Z",
-        "lastUpdated": "2026-05-16T01:17:18.629Z",
-        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-      }
-    ],
-    "playwright@claude-plugins-official": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/playwright/unknown",
-        "version": "unknown",
-        "installedAt": "2026-02-27T09:27:06.061Z",
-        "lastUpdated": "2026-04-13T14:40:47.522Z",
-        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-      }
-    ],
-    "document-skills@anthropic-agent-skills": [
-      {
-        "scope": "project",
-        "projectPath": "/Users/shuisongluar/work/eval-query",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/anthropic-agent-skills/document-skills/3d5951151859",
-        "version": "3d5951151859",
-        "installedAt": "2026-03-02T09:51:54.979Z",
-        "lastUpdated": "2026-03-02T09:51:54.979Z",
-        "gitCommitSha": "3d59511518591fa82e6cfcf0438d68dd5dad3e76"
-      }
-    ],
     "pyright-lsp@claude-plugins-official": [
       {
         "scope": "user",
@@ -100,25 +19,6 @@
         "installedAt": "2026-03-05T04:44:03.033Z",
         "lastUpdated": "2026-05-16T01:17:18.629Z",
         "gitCommitSha": "205b6e0b30366a969412d9aab7b99bea99d58db1"
-      }
-    ],
-    "cybersecurity-skills@anthropic-cybersecurity-skills": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/anthropic-cybersecurity-skills/cybersecurity-skills/1.0.0",
-        "version": "1.0.0",
-        "installedAt": "2026-03-19T17:25:36.232Z",
-        "lastUpdated": "2026-03-19T17:25:36.232Z",
-        "gitCommitSha": "d43cc7a76625c19aedf7772a7c2311e213289f56"
-      }
-    ],
-    "decisions@zimalabs": [
-      {
-        "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/zimalabs/decisions/1.3.0",
-        "version": "1.3.0",
-        "installedAt": "2026-04-13T15:01:56.939054+00:00",
-        "lastUpdated": "2026-04-13T15:01:56.939147+00:00"
       }
     ],
     "chrome-devtools-mcp@claude-plugins-official": [
