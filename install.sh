@@ -94,6 +94,12 @@ install_skills() {
   done
 }
 
+install_plugin_lock() {
+  mkdir -p "$HOME/.claude/plugins"
+  ln -sf "$DOTFILES/installed_plugins.json" "$HOME/.claude/plugins/installed_plugins.json"
+  echo "LINK  $HOME/.claude/plugins/installed_plugins.json -> $DOTFILES/installed_plugins.json"
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -165,6 +171,9 @@ install_skills
 
 # Install hooks into ~/.claude/hooks (per-file symlinks, idempotent)
 install_hooks
+
+# Symlink plugin lock so installed SHAs are pinned across machines
+install_plugin_lock
 
 # Install shared slash commands into each profile's commands/ dir
 install_commands
