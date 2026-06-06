@@ -80,4 +80,4 @@ actual=$(git -C "$plugin_dir" rev-parse HEAD)
 ```
 Pinned: `zsh-users/zsh-autosuggestions` v0.7.1, `zsh-users/zsh-syntax-highlighting` 0.8.0
 
-**Homebrew** — commit `Brewfile.lock.json` (written by `brew bundle install`) and install with `--no-upgrade` to prevent silent upgrades. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.
+**Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.
