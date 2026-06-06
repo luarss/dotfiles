@@ -78,6 +78,6 @@ git clone --depth=1 --branch <tag> "https://github.com/$repo.git" "$plugin_dir"
 actual=$(git -C "$plugin_dir" rev-parse HEAD)
 [ "$actual" = "<expected-sha>" ] || { echo "SHA mismatch for $repo"; exit 1; }
 ```
-Currently unpinned: `zsh-users/zsh-autosuggestions`, `zsh-users/zsh-syntax-highlighting`
+Pinned: `zsh-users/zsh-autosuggestions` v0.7.1, `zsh-users/zsh-syntax-highlighting` 0.8.0
 
 **Homebrew** — commit `Brewfile.lock.json` (written by `brew bundle install`) and install with `--no-upgrade` to prevent silent upgrades. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.

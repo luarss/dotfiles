@@ -129,6 +129,8 @@ install_commands() {
 install_zsh_plugin() {
   local repo="$1"
   local name="${2:-$(basename "$repo" .git)}"
+  local tag="$3"
+  local expected_sha="$4"
   local zsh_custom="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
   local plugin_dir="$zsh_custom/plugins/$name"
 
@@ -138,8 +140,11 @@ install_zsh_plugin() {
   fi
 
   mkdir -p "$zsh_custom/plugins"
-  git clone --depth=1 "https://github.com/$repo.git" "$plugin_dir" 2>/dev/null
-  echo "INST  $name plugin"
+  git clone --depth=1 --branch "$tag" "https://github.com/$repo.git" "$plugin_dir" 2>/dev/null
+  local actual
+  actual=$(git -C "$plugin_dir" rev-parse HEAD)
+  [ "$actual" = "$expected_sha" ] || { echo "ERR   SHA mismatch for $repo (got $actual, want $expected_sha)"; exit 1; }
+  echo "INST  $name plugin ($tag)"
 }
 
 # Symlinks
@@ -168,8 +173,8 @@ git -C "$DOTFILES" config core.hooksPath .githooks
 echo "HOOK  core.hooksPath -> .githooks"
 
 # Install custom zsh plugins (requires Oh My Zsh to be installed first)
-install_zsh_plugin "zsh-users/zsh-autosuggestions"
-install_zsh_plugin "zsh-users/zsh-syntax-highlighting"
+install_zsh_plugin "zsh-users/zsh-autosuggestions" "" "v0.7.1" "e52ee8ca55bcc56a17c828767a3f98f22a68d4eb"
+install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6aafd24e5acb5b2e17e4dd5dddf3e"
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps opus[1m].
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
