@@ -25,7 +25,11 @@
       "Read(**/*credential*)",
       "Read(**/*secret*)",
       "Read(**/*.pem)",
-      "Read(**/*.key)"
+      "Read(**/*.key)",
+      "Read(~/.my.cnf)",
+      "Read(**/.my.cnf)",
+      "Read(**/my.cnf)",
+      "Read(**/*.cnf)"
     ],
     "defaultMode": "default"
   },
