@@ -49,6 +49,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ~/.claude/hooks/remote-command-guard.sh"
+          },
+          {
+            "type": "command",
             "command": "bash ~/.claude/hooks/db-guard.sh"
           }
         ]

@@ -61,7 +61,10 @@ The script symlinks dotfiles into `$HOME`, generates each profile's `settings.js
 
 Every profile's `settings.json` is generated from `settings.base.json`, which carries the shared deny list blocking destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, and key/pem files. Edit `settings.base.json` to change the policy for all profiles at once.
 
-`settings.base.json` also registers a `PreToolUse` hook (`.claude/hooks/db-guard.sh`, matcher `Bash`) that blocks destructive SQL run through the `mysql`/`mariadb`/`psql` CLIs — `DROP TABLE/DATABASE/SCHEMA`, `TRUNCATE`, `DELETE` without `WHERE`, and `ALTER TABLE ... DROP` — exiting 2 to deny. It only inspects inline SQL in the command string; SQL loaded from a file (`psql -f`) is not checked.
+`settings.base.json` also registers two `PreToolUse` hooks on the `Bash` matcher (both exit 2 to deny):
+
+- `.claude/hooks/db-guard.sh` — blocks destructive SQL run through the `mysql`/`mariadb`/`psql` CLIs: `DROP TABLE/DATABASE/SCHEMA`, `TRUNCATE`, `DELETE` without `WHERE`, and `ALTER TABLE ... DROP`. It only inspects inline SQL in the command string; SQL loaded from a file (`psql -f`) is not checked.
+- `.claude/hooks/remote-command-guard.sh` — blocks dangerous Bash across 7 categories (destructive deletion, env/secret leakage, path traversal, external comms, permission changes, process termination, command injection). **It only fires in orchestrated/remote sessions** — i.e. when `OPENCLAW_SESSION_ID` or `HERMES_SESSION_ID` is set — and no-ops in normal interactive local sessions so day-to-day `curl`/`ssh`/`sudo`/`kill` stay allowed. This complements the `Read(...)` deny rules, which only cover file-reading commands Claude recognizes (`cat`/`head`/`tail`/`sed`/`grep`) and not `env`/`printenv`/`echo $VAR` or indirect readers.
 
 ## Dependency Locking (Supply Chain Hygiene)
 
