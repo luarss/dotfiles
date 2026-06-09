@@ -12,7 +12,10 @@
 #
 # Blocked categories:
 #   1. Destructive deletion (rm -rf /, rm -rf ~, rm -rf *, mkfs, dd of=/dev/…)
-#   2. Env/secret leakage (env, printenv, echo $SECRET, cat .env / credentials)
+#   2. Env/secret leakage (env/printenv/set/declare -p dumps; echo/printf of
+#      $SECRET-ish vars incl. ${VAR}; reading .env/credentials/secrets via ANY
+#      reader; cloud-cred files ~/.aws|~/.ssh|~/.kube|~/.config/gcloud, shell
+#      history, private keys, macOS keychain)
 #   3. Path traversal (/etc/passwd, /etc/shadow, /proc/<pid>, ../etc …)
 #   4. External communication (curl, wget, nc, ssh, scp, rsync host:, …)
 #   5. Permission changes (chmod 777/666, chown, mount, sudo, su, dscl)
@@ -73,25 +76,58 @@ for pat in destructive_patterns:
 # === 2. Env/secret leakage ===
 # Match against original cmd with IGNORECASE to preserve env-var name casing.
 if not blocked_reason:
-    secret_patterns = [
-        r'\b(env|printenv|set)\s*$',
-        r'\b(env|printenv|set)\s*\|',
-        r'\becho\s+.*\$[A-Z_]*KEY\b',
-        r'\becho\s+.*\$[A-Z_]*SECRET\b',
-        r'\becho\s+.*\$[A-Z_]*TOKEN\b',
-        r'\becho\s+.*\$[A-Z_]*PASSWORD\b',
-        r'\becho\s+.*\$[A-Z_]*PASSWD\b',
-        r'\becho\s+.*\$[A-Z_]*API\b',
-        r'\becho\s+.*\$[A-Z_]*CREDENTIAL\b',
-        r'\becho\s+.*\$(AWS_|OPENAI_|ANTHROPIC_|TELEGRAM_|GITHUB_|SUPABASE_)',
-        r'\bcat\s+.*\.env\b',
-        r'\bcat\s+.*\.netrc\b',
-        r'\bcat\s+.*credentials\b',
-        r'\bcat\s+.*/\.ssh/',
-        r'\bexport\s+-p\s*$',
-        r'\bexport\s+-p\s*\|',
+    # 2a. Dump the whole environment / all shell vars.
+    env_dump_patterns = [
+        r'\b(env|printenv)\b\s*($|\|)',           # bare `env` / `printenv`, or piped
+        r'\bprintenv\s+\S',                        # printenv VAR (single-var read)
+        r'\bset\b\s*($|\|)',                       # bare `set` dumps vars (not `set -e`)
+        r'\bexport\s+-p\b',
+        r'\b(declare|typeset)\s+-[A-Za-z]*p\b',    # declare -p / typeset -p
+        r'\bcompgen\s+-v\b',
     ]
-    for pat in secret_patterns:
+    # 2b. echo/printf of a secret-ish variable ($VAR or ${VAR}).
+    #     PWD/PATH deliberately excluded: PWD not in the suffix list; `PAT\b`
+    #     won't match PATH (no word boundary after PAT in "PATH").
+    secret_suffix = (r'(KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|'
+                     r'CREDENTIAL|PRIVATE|API|DSN|PAT|AUTH)')
+    secret_prefix = (r'(AWS_|OPENAI_|ANTHROPIC_|TELEGRAM_|GITHUB_|GITLAB_|'
+                     r'SUPABASE_|DEEPSEEK_|XIAOMI_|DATABASE_|SLACK_|NPM_|'
+                     r'DOCKER_|STRIPE_|TWILIO_|GOOGLE_|AZURE_)')
+    echo_patterns = [
+        rf'\b(echo|printf)\b[^|;&]*\$\{{?[A-Za-z_]*{secret_suffix}\b',
+        rf'\b(echo|printf)\b[^|;&]*\$\{{?{secret_prefix}',
+    ]
+    # 2c. Read a credential file with ANY reader, or via `< file` redirection.
+    #     `.env.example|sample|template|dist` allowed (non-secret templates).
+    readers = (r'(cat|tac|less|more|head|tail|bat|view|nl|od|xxd|hexdump|'
+               r'strings|grep|egrep|fgrep|rg|awk|sed|cut|sort|tr|tee|jq|yq|'
+               r'base64|gpg|openssl|cp|tar|zip|readlink|realpath)')
+    env_tail = r'\.env\b(?!\.(?:example|sample|template|dist))'
+    file_read_patterns = [
+        rf'\b{readers}\b[^|;&]*{env_tail}',
+        rf'\b{readers}\b[^|;&]*\.(npmrc|pypirc|my\.cnf)\b',
+        rf'\b{readers}\b[^|;&]*credentials\b',
+        rf'\b{readers}\b[^|;&]*secrets?\.(json|ya?ml|env|txt)\b',
+        rf'<\s*[^|;&]*{env_tail}',                  # cmd < .env
+    ]
+    # 2d. References to high-value secret material — never legit in an
+    #     automated session — regardless of the surrounding command.
+    always_block = [
+        r'\bid_(rsa|dsa|ecdsa|ed25519)\b',
+        r'/\.ssh/(?!known_hosts)',                 # any ~/.ssh file except known_hosts
+        r'\.git-credentials\b',
+        r'\.aws/(credentials|config)\b',
+        r'\.config/gcloud/',
+        r'\.kube/config\b',
+        r'\.docker/config\.json\b',
+        r'\.pgpass\b',
+        r'\.netrc\b',
+        r'\.(bash|zsh|python)_history\b',
+        r'BEGIN\s+[A-Z0-9 ]*PRIVATE KEY',
+        r'\bsecurity\s+find-(generic|internet)-password\b',  # macOS keychain
+    ]
+    for pat in (env_dump_patterns + echo_patterns
+                + file_read_patterns + always_block):
         if re.search(pat, cmd, re.IGNORECASE):
             blocked_reason = "secret/env-var leakage attempt detected"
             break
