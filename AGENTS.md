@@ -61,6 +61,8 @@ The script symlinks dotfiles into `$HOME`, generates each profile's `settings.js
 
 Every profile's `settings.json` is generated from `settings.base.json`, which carries the shared deny list blocking destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, and key/pem files. Edit `settings.base.json` to change the policy for all profiles at once.
 
+`settings.base.json` also registers a `PreToolUse` hook (`.claude/hooks/db-guard.sh`, matcher `Bash`) that blocks destructive SQL run through the `mysql`/`mariadb`/`psql` CLIs — `DROP TABLE/DATABASE/SCHEMA`, `TRUNCATE`, `DELETE` without `WHERE`, and `ALTER TABLE ... DROP` — exiting 2 to deny. It only inspects inline SQL in the command string; SQL loaded from a file (`psql -f`) is not checked.
+
 ## Dependency Locking (Supply Chain Hygiene)
 
 Pin every external dependency to an immutable reference. Never use mutable tags or branches in any automated install path.

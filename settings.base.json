@@ -43,6 +43,17 @@
     "defaultMode": "default"
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/db-guard.sh"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "",
