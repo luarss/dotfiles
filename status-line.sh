@@ -64,8 +64,8 @@ MODEL=$(echo "$INPUT" | jq -r '.model.display_name // "unknown"')
 MODEL_ID=$(echo "$INPUT" | jq -r '.model.id // ""')
 CWD=$(echo "$INPUT" | jq -r '.workspace.current_dir // "."')
 
-# Detect 1M context models (Anthropic, Vertex, Bedrock all use "1m" in model ID)
-if echo "$MODEL_ID" | grep -qi '1m'; then
+# Detect 1M context models: "1m" suffix (Anthropic, Vertex, Bedrock) or Fable (1M natively)
+if echo "$MODEL_ID" | grep -qiE '1m|fable'; then
     CTX_LIMIT=$CTX_LIMIT_1M
 else
     CTX_LIMIT=$DEFAULT_CTX_LIMIT
