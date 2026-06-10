@@ -13,6 +13,9 @@ setup() {
   # /dev/null is not a regular file, so install.sh skips sourcing it.
   export DOTFILES_ENV=/dev/null
 
+  # Skip the npm ci for pinned tools (network-dependent, per-test $HOME)
+  export DOTFILES_SKIP_NODE_TOOLS=1
+
   # Store original environment
   ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
   ORIGINAL_XIAOMI_TOKEN="${XIAOMI_AUTH_TOKEN:-}"

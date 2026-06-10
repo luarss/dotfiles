@@ -1,0 +1,8 @@
+{
+  "name": "dotfiles-tools",
+  "private": true,
+  "description": "Pinned CLI tools installed by install.sh via `npm ci` (lockfile carries the sha512 integrity pins)",
+  "dependencies": {
+    "ccusage": "20.0.9"
+  }
+}

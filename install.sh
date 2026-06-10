@@ -153,6 +153,35 @@ install_zsh_plugin() {
   echo "INST  $name plugin ($tag)"
 }
 
+# Install pinned npm CLI tools (ccusage, …) from tools/package-lock.json.
+# `npm ci` verifies each tarball against the lockfile's sha512 integrity pin,
+# so this is the npm equivalent of the zsh plugin SHA pins. Binaries are
+# symlinked into ~/.local/bin (already on PATH via .zshrc).
+# To bump a tool: edit tools/package.json, run `npm install --package-lock-only`
+# in tools/, commit both files, re-run ./install.sh.
+install_node_tools() {
+  local tools_dir="$DOTFILES/tools"
+
+  [ -n "${DOTFILES_SKIP_NODE_TOOLS:-}" ] && { echo "SKIP  node tools (DOTFILES_SKIP_NODE_TOOLS set)"; return; }
+  command -v npm >/dev/null || { echo "SKIP  node tools (npm not found)"; return; }
+
+  # npm ci wipes node_modules every run; skip when already in sync with the lockfile
+  if (cd "$tools_dir" && npm ls --omit=dev >/dev/null 2>&1); then
+    echo "SKIP  node tools (in sync with lockfile)"
+  else
+    (cd "$tools_dir" && npm ci --no-audit --no-fund >/dev/null)
+    echo "INST  node tools (npm ci, integrity verified)"
+  fi
+
+  mkdir -p "$HOME/.local/bin"
+  local bin
+  for bin in "$tools_dir/node_modules/.bin"/*; do
+    [ -e "$bin" ] || continue
+    ln -sf "$bin" "$HOME/.local/bin/$(basename "$bin")"
+    echo "LINK  $HOME/.local/bin/$(basename "$bin") -> $bin"
+  done
+}
+
 # Symlinks
 symlink .zshrc
 symlink .env.example
@@ -184,6 +213,9 @@ echo "HOOK  core.hooksPath -> .githooks"
 # Install custom zsh plugins (requires Oh My Zsh to be installed first)
 install_zsh_plugin "zsh-users/zsh-autosuggestions" "" "v0.7.1" "e52ee8ca55bcc56a17c828767a3f98f22a68d4eb"
 install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6aafd24e5acb5b2e17e4dd5dddf3e"
+
+# Install pinned npm CLI tools from tools/package-lock.json
+install_node_tools
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps opus[1m].
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.

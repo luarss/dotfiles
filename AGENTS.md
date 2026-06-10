@@ -85,6 +85,9 @@ actual=$(git -C "$plugin_dir" rev-parse HEAD)
 ```
 Pinned: `zsh-users/zsh-autosuggestions` v0.7.1, `zsh-users/zsh-syntax-highlighting` 0.8.0
 
+**npm CLI tools** (`tools/`, installed by `install_node_tools` in `install.sh`) — exact versions in `tools/package.json`; the committed lockfile carries sha512 integrity pins verified by `npm ci`. Binaries are symlinked into `~/.local/bin` — never alias to `npx <pkg>`. To bump: edit `tools/package.json`, `npm install --package-lock-only`, commit, re-run `./install.sh`.
+Pinned: `ccusage` 20.0.9
+
 **Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.
 
 **Claude plugins** — `installed_plugins.json` is committed to this repo and symlinked to `~/.claude/plugins/installed_plugins.json` by `install.sh`. It records the `gitCommitSha` for every installed plugin. To check for updates run `scripts/check-plugin-updates.sh` (also runs weekly via `.github/workflows/check-plugin-updates.yml`, which opens a GitHub issue when any plugin is behind). To update a plugin: let Claude Code upgrade it, copy the updated `~/.claude/plugins/installed_plugins.json` back into the repo, and commit.
