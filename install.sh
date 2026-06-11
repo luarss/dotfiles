@@ -217,7 +217,7 @@ install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6a
 # Install pinned npm CLI tools from tools/package-lock.json
 install_node_tools
 
-# Personal laptops use sonnet (lower subscription limits); work machine keeps opus[1m].
+# Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
@@ -225,7 +225,8 @@ if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
     && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
   echo "SET   $HOME/.claude/settings.json model -> sonnet (personal)"
 else
-  echo "SKIP  sonnet switch (work machine — keeping opus[1m])"
+  manifest_model=$(jq -r '.model' "$HOME/.claude/settings.json")
+  echo "SKIP  sonnet switch (work machine — keeping $manifest_model)"
 fi
 
 echo "Done."

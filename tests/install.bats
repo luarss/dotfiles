@@ -229,10 +229,11 @@ teardown() {
 
   run bash "$INSTALL_SCRIPT"
 
-  local model
+  local expected model
+  expected=$(jq -r '.default.overrides.model' "$(dirname "$INSTALL_SCRIPT")/providers.json")
   model=$(jq -r '.model' "$HOME/.claude/settings.json")
-  [ "$model" = "opus[1m]" ]
-  [[ "$output" == *"SKIP"*"keeping opus[1m]"* ]]
+  [ "$model" = "$expected" ]
+  [[ "$output" == *"SKIP"*"keeping $expected"* ]]
 }
 
 @test "sonnet_switch_respects_custom_work_hostname" {
@@ -244,10 +245,11 @@ teardown() {
 
   run bash "$INSTALL_SCRIPT"
 
-  local model
+  local expected model
+  expected=$(jq -r '.default.overrides.model' "$(dirname "$INSTALL_SCRIPT")/providers.json")
   model=$(jq -r '.model' "$HOME/.claude/settings.json")
-  [ "$model" = "opus[1m]" ]
-  [[ "$output" == *"SKIP"*"keeping opus[1m]"* ]]
+  [ "$model" = "$expected" ]
+  [[ "$output" == *"SKIP"*"keeping $expected"* ]]
 }
 
 @test "hooks_install_overwrites_stale_symlink" {
