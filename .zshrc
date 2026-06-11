@@ -140,3 +140,6 @@ export PATH="$HOME/.local/bin:$PATH"
 # zoxide /fzf
 eval "$(zoxide init zsh)"
 source <(fzf --zsh)
+
+# gcloud needs Python 3.10+ (macOS system python3 is 3.9)
+[[ "$OSTYPE" == darwin* ]] && export CLOUDSDK_PYTHON=/opt/homebrew/bin/python3.14
