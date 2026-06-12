@@ -4,7 +4,7 @@
     "typescript-lsp@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
+        "installPath": "~/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-03-05T04:44:05.891Z",
         "lastUpdated": "2026-05-16T01:17:18.629Z",
@@ -14,7 +14,7 @@
     "pyright-lsp@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
+        "installPath": "~/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-03-05T04:44:03.033Z",
         "lastUpdated": "2026-05-16T01:17:18.629Z",
@@ -24,7 +24,7 @@
     "chrome-devtools-mcp@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/chrome-devtools-mcp/1.1.1",
+        "installPath": "~/.claude/plugins/cache/claude-plugins-official/chrome-devtools-mcp/1.1.1",
         "version": "1.1.1",
         "installedAt": "2026-05-16T01:17:18.629Z",
         "lastUpdated": "2026-05-30T04:06:52.557Z",
@@ -34,7 +34,7 @@
     "skill-creator@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/skill-creator/unknown",
+        "installPath": "~/.claude/plugins/cache/claude-plugins-official/skill-creator/unknown",
         "version": "unknown",
         "installedAt": "2026-05-16T07:51:41.813Z",
         "lastUpdated": "2026-05-16T07:51:41.813Z"

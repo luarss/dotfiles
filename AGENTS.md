@@ -15,7 +15,7 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `gen-settings.jq` — jq program that layers `settings.base.json` + a provider's env/overrides into a final `settings.json`
 - `.claude/`, `.claude-second-profile/`, `.claude-third-profile/` — Per-profile dirs (`CLAUDE.md`, hooks, etc.). Their `settings.json` is **generated**, not committed.
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
-- `routines/` — Backup of remote routines (scheduled cloud agents at claude.ai). One dir per routine holding `SKILL.md` (prompt + schedule in frontmatter). Synced from the server with the `/sync-routines` slash command — routines live server-side and are only reachable via the `RemoteTrigger` tool, so the sync must be Claude-driven; there is no curl/cron path. **The repo is public**: only name/schedule/prompt are stored, never `routine.json` or trigger/environment/connector/account IDs. `install.sh` symlinks them into `~/.claude/scheduled-tasks/` **only when `hostname -s` matches the work hostname** (`DOTFILES_WORK_HOSTNAME`, default `Shuis-MacBook-Air`) and prunes symlinks for routines deleted from the repo; personal machines skip them.
+- Routines (scheduled cloud agents) are deliberately **not** stored here — this repo is public. Their backup (local + remote) is the private `claude-backup` repo, which mirrors `~/.claude/scheduled-tasks/` to Google Drive daily.
 
 ## N-Claude Profile System
 
