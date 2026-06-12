@@ -349,15 +349,43 @@ teardown() {
   hostname() { echo "Shuis-MacBook-Air"; }
   export -f hostname
 
-  mkdir -p "$HOME/.claude/scheduled-tasks/realfast---uat-regression"
-  touch "$HOME/.claude/scheduled-tasks/realfast---uat-regression/local-marker"
+  # Use whichever routine happens to exist in the repo, so the test
+  # survives /sync-routines renaming or removing routines
+  local routine_name
+  routine_name="$(basename "$(find "$(dirname "$INSTALL_SCRIPT")/routines" -mindepth 1 -maxdepth 1 -type d | head -1)")"
+  [ -n "$routine_name" ]
+
+  mkdir -p "$HOME/.claude/scheduled-tasks/$routine_name"
+  touch "$HOME/.claude/scheduled-tasks/$routine_name/local-marker"
 
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
 
-  [ ! -L "$HOME/.claude/scheduled-tasks/realfast---uat-regression" ]
-  [ -f "$HOME/.claude/scheduled-tasks/realfast---uat-regression/local-marker" ]
-  [[ "$output" == *"SKIP"*"realfast---uat-regression (exists and is not a symlink)"* ]]
+  [ ! -L "$HOME/.claude/scheduled-tasks/$routine_name" ]
+  [ -f "$HOME/.claude/scheduled-tasks/$routine_name/local-marker" ]
+  [[ "$output" == *"SKIP"*"$routine_name (exists and is not a symlink)"* ]]
+}
+
+@test "routines_prune_dangling_symlinks" {
+  # A symlink into routines/ whose source dir was deleted (routine removed
+  # server-side, pruned by /sync-routines) must be cleaned up
+  hostname() { echo "Shuis-MacBook-Air"; }
+  export -f hostname
+
+  local routines_src
+  routines_src="$(dirname "$INSTALL_SCRIPT")/routines"
+
+  mkdir -p "$HOME/.claude/scheduled-tasks"
+  ln -s "$routines_src/deleted-routine/" "$HOME/.claude/scheduled-tasks/deleted-routine"
+  # Dangling symlinks NOT pointing into routines/ are none of our business
+  ln -s "$HOME/nonexistent-target" "$HOME/.claude/scheduled-tasks/unrelated-dangling"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  [ ! -L "$HOME/.claude/scheduled-tasks/deleted-routine" ]
+  [[ "$output" == *"PRUNE"*"deleted-routine"* ]]
+  [ -L "$HOME/.claude/scheduled-tasks/unrelated-dangling" ]
 }
 
 @test "skills_install_skips_real_dir" {

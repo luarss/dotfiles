@@ -106,6 +106,19 @@ install_routines() {
     return 0
   fi
   mkdir -p "$routines_dst"
+  # Prune symlinks pointing into routines/ whose source dir is gone
+  # (routine was deleted server-side and removed by /sync-routines)
+  for link in "$routines_dst"/*; do
+    [ -L "$link" ] || continue
+    case "$(readlink "$link")" in
+      "$routines_src"/*)
+        if [ ! -e "$link" ]; then
+          rm "$link"
+          echo "PRUNE $link"
+        fi
+        ;;
+    esac
+  done
   for routine_dir in "$routines_src"/*/; do
     local name dst
     name="$(basename "$routine_dir")"
