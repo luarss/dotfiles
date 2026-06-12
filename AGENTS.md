@@ -15,6 +15,7 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `gen-settings.jq` — jq program that layers `settings.base.json` + a provider's env/overrides into a final `settings.json`
 - `.claude/`, `.claude-second-profile/`, `.claude-third-profile/` — Per-profile dirs (`CLAUDE.md`, hooks, etc.). Their `settings.json` is **generated**, not committed.
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
+- `routines/` — Backup of work-machine routines (scheduled cloud agents, mirrors `~/.claude/scheduled-tasks/`). `install.sh` symlinks them back **only when `hostname -s` matches the work hostname** (`DOTFILES_WORK_HOSTNAME`, default `Shuis-MacBook-Air`); personal machines skip them. Only the routine prompt (`SKILL.md`) is local — cron timing lives server-side.
 
 ## N-Claude Profile System
 

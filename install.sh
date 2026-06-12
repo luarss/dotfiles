@@ -94,6 +94,31 @@ install_skills() {
   done
 }
 
+# Routines (scheduled cloud agents) are work-specific: restore them only on the
+# work machine so personal laptops never pick up work schedules. Same semantics
+# as install_skills — real dirs are left alone, symlinks are created/repaired.
+install_routines() {
+  local routines_src="$DOTFILES/routines"
+  local routines_dst="$HOME/.claude/scheduled-tasks"
+  [ -d "$routines_src" ] || return 0
+  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+    echo "SKIP  routines (non-work machine)"
+    return 0
+  fi
+  mkdir -p "$routines_dst"
+  for routine_dir in "$routines_src"/*/; do
+    local name dst
+    name="$(basename "$routine_dir")"
+    dst="$routines_dst/$name"
+    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+      echo "SKIP  $dst (exists and is not a symlink)"
+      continue
+    fi
+    ln -sfn "$routine_dir" "$dst"
+    echo "LINK  $dst -> $routine_dir"
+  done
+}
+
 install_plugin_lock() {
   mkdir -p "$HOME/.claude/plugins"
   ln -sf "$DOTFILES/installed_plugins.json" "$HOME/.claude/plugins/installed_plugins.json"
@@ -182,6 +207,10 @@ install_node_tools() {
   done
 }
 
+# Work-machine detection — gates routine restore and the personal sonnet switch.
+# Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
+WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
+
 # Symlinks
 symlink .zshrc
 symlink .env.example
@@ -201,6 +230,9 @@ install_skills
 # Install hooks into ~/.claude/hooks (per-file symlinks, idempotent)
 install_hooks
 
+# Restore routines into ~/.claude/scheduled-tasks (work machine only)
+install_routines
+
 # Symlink plugin lock so installed SHAs are pinned across machines
 install_plugin_lock
 
@@ -218,8 +250,6 @@ install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6a
 install_node_tools
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
-# Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
-WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
   jq '.model = "sonnet"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
     && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
