@@ -295,6 +295,71 @@ teardown() {
   [ "$(readlink "$HOME/.claude/skills/obsidian-journal")" = "$expected" ]
 }
 
+@test "routines_installed_on_work_machine" {
+  hostname() { echo "Shuis-MacBook-Air"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local routines_src
+  routines_src="$(dirname "$INSTALL_SCRIPT")/routines"
+
+  # Every routine directory in source should be symlinked into ~/.claude/scheduled-tasks
+  for routine_dir in "$routines_src"/*/; do
+    [ -e "$routine_dir" ] || continue
+    local name dst
+    name="$(basename "$routine_dir")"
+    dst="$HOME/.claude/scheduled-tasks/$name"
+    [ -L "$dst" ]
+    [ "$(readlink "$dst")" = "$routine_dir" ]
+  done
+}
+
+@test "routines_skipped_on_personal_laptop" {
+  hostname() { echo "personal-macbook-pro"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # No routines should be applied at all on a non-work machine
+  [ ! -e "$HOME/.claude/scheduled-tasks" ]
+  [[ "$output" == *"SKIP  routines (non-work machine)"* ]]
+}
+
+@test "routines_respect_custom_work_hostname" {
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+  hostname() { echo "custom-corp-laptop"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local routines_src
+  routines_src="$(dirname "$INSTALL_SCRIPT")/routines"
+  for routine_dir in "$routines_src"/*/; do
+    [ -e "$routine_dir" ] || continue
+    [ -L "$HOME/.claude/scheduled-tasks/$(basename "$routine_dir")" ]
+  done
+}
+
+@test "routines_install_skips_real_dir" {
+  # A machine-local (real) routine dir must be left untouched
+  hostname() { echo "Shuis-MacBook-Air"; }
+  export -f hostname
+
+  mkdir -p "$HOME/.claude/scheduled-tasks/realfast---uat-regression"
+  touch "$HOME/.claude/scheduled-tasks/realfast---uat-regression/local-marker"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  [ ! -L "$HOME/.claude/scheduled-tasks/realfast---uat-regression" ]
+  [ -f "$HOME/.claude/scheduled-tasks/realfast---uat-regression/local-marker" ]
+  [[ "$output" == *"SKIP"*"realfast---uat-regression (exists and is not a symlink)"* ]]
+}
+
 @test "skills_install_skips_real_dir" {
   # A manually installed (real) skill dir must be left untouched
   mkdir -p "$HOME/.claude/skills/obsidian-journal"
