@@ -5,7 +5,7 @@
     "token": "ANTHROPIC_AUTH_TOKEN",
     "thirdParty": false,
     "overrides": {
-      "model": "claude-fable-5[1m]",
+      "model": "opus[1m]",
       "effortLevel": "high",
       "hooks": {
         "PostToolUse": [
