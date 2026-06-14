@@ -67,10 +67,10 @@ CWD=$(echo "$INPUT" | jq -r '.workspace.current_dir // "."')
 # Detect 1M-context models. Two cases:
 #   1. Explicit "1m" suffix on an opt-in beta model (Anthropic, Vertex, Bedrock),
 #      e.g. claude-sonnet-4-5[1m].
-#   2. Models with a 1M window natively: Fable 5, Mythos 5, Opus 4.6/4.7/4.8,
-#      Sonnet 4.6. (Haiku 4.5 and older Sonnet/Opus stay at 200K.)
+#   2. Models with a 1M window natively: Fable 5, Mythos 5, Opus 4.6/4.7/4.8.
+#      (Sonnet 4.6, Haiku 4.5 and older Sonnet/Opus stay at 200K.)
 # Update the family list below when a new 1M-native model ships.
-if echo "$MODEL_ID" | grep -qiE '1m|fable|mythos|opus-4-[678]|sonnet-4-6'; then
+if echo "$MODEL_ID" | grep -qiE '1m|fable|mythos|opus-4-[678]'; then
     CTX_LIMIT=$CTX_LIMIT_1M
 else
     CTX_LIMIT=$DEFAULT_CTX_LIMIT
