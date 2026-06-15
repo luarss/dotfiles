@@ -15,7 +15,14 @@
             "hooks": [
               { "type": "command", "command": "bash ~/.claude/hooks/remote-command-guard.sh" },
               { "type": "command", "command": "bash ~/.claude/hooks/db-guard.sh" },
+              { "type": "command", "command": "bash ~/.claude/hooks/db-rate-limit.sh" },
               { "type": "command", "command": "rtk hook claude" }
+            ]
+          },
+          {
+            "matcher": "mcp__.*mysql.*",
+            "hooks": [
+              { "type": "command", "command": "bash ~/.claude/hooks/db-rate-limit.sh" }
             ]
           }
         ],
