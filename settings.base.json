@@ -6,9 +6,6 @@
     "deny": [
       "Bash(rm -rf:*)",
       "Bash(rm -fr:*)",
-      "Bash(gcloud auth print-access-token:*)",
-      "Bash(gcloud auth print-identity-token:*)",
-      "Bash(gcloud auth application-default print-access-token:*)",
       "Read(.env)",
       "Read(.env.*)",
       "Read(**/.env)",
