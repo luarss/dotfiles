@@ -132,6 +132,11 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 export PATH="$HOME/.local/bin:$PATH"
 
+# rtk (Rust Token Killer) — opt out of telemetry for all terminal use too.
+# In-Claude sessions get this via the rtk profile's settings.json env; this
+# covers manual `rtk gain`/`rtk discover` runs in the shell.
+export RTK_TELEMETRY_DISABLED=1
+
 # ------ N-Claude profile system ----
 # Wrappers (`cl <provider>` dispatcher + claude/s-claude/d-claude aliases) are
 # generated from providers.json by install.sh into ~/.claude-profiles.zsh.

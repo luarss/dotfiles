@@ -29,10 +29,21 @@ Selecting a provider (each sets `CLAUDE_CONFIG_DIR` to its dir):
 ```zsh
 claude       # ~/.claude (default)              ┐ short aliases, from each
 s-claude     # ~/.claude-second-profile          │ provider's `aliases` list
-d-claude     # ~/.claude-third-profile           ┘
+d-claude     # ~/.claude-third-profile           │
+r-claude     # ~/.claude-fourth-profile          ┘
 cl mimo          # dispatcher: any provider by manifest key
 cl --list        # list available providers
 ```
+
+### rtk Profile (Rust Token Killer)
+
+The `rtk` provider (`r-claude` → `.claude-fourth-profile`) is the default-Anthropic profile with [rtk](https://github.com/rtk-ai/rtk) wired in for token-saving command rewrites. `rtk` itself is installed via the `Brewfile` (`brew "rtk"`). rtk lives **only** in this profile, so the other profiles stay untouched:
+
+- Its `overrides.hooks.PreToolUse` re-declares the shared guards (`remote-command-guard.sh`, `db-guard.sh`) **plus** `rtk hook claude`, which transparently rewrites Bash commands (`git status` → `rtk git status`). The rtk hook is listed **last** so the security guards inspect the original command first.
+- Its `CLAUDE.md` is a real file (not the shared symlink) that `@`-imports `RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` symlinks `RTK.md` into a profile only when that profile ships one.
+- **Telemetry is disabled** two ways: `overrides.env.RTK_TELEMETRY_DISABLED=1` in `providers.json` (covers the in-Claude hook), and `export RTK_TELEMETRY_DISABLED=1` in `.zshrc` (covers manual `rtk` use in the shell). rtk telemetry is also off by default / opt-in, so this just makes the opt-out explicit and reproducible.
+
+After install, **restart Claude Code** for the hook to take effect.
 
 ### Adding a New Provider
 

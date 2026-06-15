@@ -40,6 +40,9 @@ generate_profiles() {
     mkdir -p "$HOME/$dir"
     symlink "$dir/CLAUDE.md"
     symlink "$dir/AGENTS.md"
+    # RTK.md is profile-specific (only the rtk profile ships one); its CLAUDE.md
+    # @-imports it. Symlink only when the profile actually provides the file.
+    if [ -e "$DOTFILES/$dir/RTK.md" ]; then symlink "$dir/RTK.md"; fi
     ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
     jq -n --argjson base "$base" --argjson p "$pentry" --arg token "$token" \
