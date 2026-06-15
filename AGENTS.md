@@ -13,7 +13,7 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `providers.json` — **Single source of truth** for Claude profiles: one entry per provider (dir, aliases, token env var, base URL, model map, freeform settings `overrides`)
 - `settings.base.json` — Shared `settings.json` content for every profile (deny list, hooks, status line, plugins, attribution)
 - `gen-settings.jq` — jq program that layers `settings.base.json` + a provider's env/overrides into a final `settings.json`
-- `.claude/`, `.claude-second-profile/`, `.claude-third-profile/` — Per-profile dirs (`CLAUDE.md`, hooks, etc.). Their `settings.json` is **generated**, not committed.
+- `.claude/`, `.claude-second-profile/`, `.claude-third-profile/` — Per-profile dirs (`CLAUDE.md`, hooks, etc.). Their `settings.json` is **generated**, not committed. The default `.claude/` profile also ships `RTK.md` (rtk meta-command reference).
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
 - `routines/` — Backup of remote routines (scheduled cloud agents at claude.ai). One dir per routine holding `SKILL.md` (prompt + schedule in frontmatter). Synced from the server with the `/sync-routines` slash command — routines live server-side and are only reachable via the `RemoteTrigger` tool, so the sync must be Claude-driven; there is no curl/cron path. **The repo is public**: only name/schedule/prompt are stored, never `routine.json` or trigger/environment/connector/account IDs. `install.sh` symlinks them into `~/.claude/scheduled-tasks/` **only when `hostname -s` matches the work hostname** (`DOTFILES_WORK_HOSTNAME`, default `Shuis-MacBook-Air`) and prunes symlinks for routines deleted from the repo; personal machines skip them.
 
@@ -27,20 +27,19 @@ Everything is driven by `providers.json`. On install, `install.sh`:
 Selecting a provider (each sets `CLAUDE_CONFIG_DIR` to its dir):
 
 ```zsh
-claude       # ~/.claude (default)              ┐ short aliases, from each
+claude       # ~/.claude (default)               ┐ short aliases, from each
 s-claude     # ~/.claude-second-profile          │ provider's `aliases` list
-d-claude     # ~/.claude-third-profile           │
-r-claude     # ~/.claude-fourth-profile          ┘
+d-claude     # ~/.claude-third-profile           ┘
 cl mimo          # dispatcher: any provider by manifest key
 cl --list        # list available providers
 ```
 
-### rtk Profile (Rust Token Killer)
+### rtk (Rust Token Killer) — default profile
 
-The `rtk` provider (`r-claude` → `.claude-fourth-profile`) is the default-Anthropic profile with [rtk](https://github.com/rtk-ai/rtk) wired in for token-saving command rewrites. `rtk` itself is installed via the `Brewfile` (`brew "rtk"`). rtk lives **only** in this profile, so the other profiles stay untouched:
+The default `claude` profile (`.claude`) has [rtk](https://github.com/rtk-ai/rtk) wired in for token-saving command rewrites. `rtk` itself is installed via the `Brewfile` (`brew "rtk"`). It lives **only** in the default profile, so the third-party profiles (`s-claude`, `d-claude`) stay untouched:
 
 - Its `overrides.hooks.PreToolUse` re-declares the shared guards (`remote-command-guard.sh`, `db-guard.sh`) **plus** `rtk hook claude`, which transparently rewrites Bash commands (`git status` → `rtk git status`). The rtk hook is listed **last** so the security guards inspect the original command first.
-- Its `CLAUDE.md` is a real file (not the shared symlink) that `@`-imports `RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` symlinks `RTK.md` into a profile only when that profile ships one.
+- `.claude/CLAUDE.md` `@`-imports `RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` symlinks `RTK.md` into a profile only when that profile ships one (only the default does).
 - **Telemetry is disabled** two ways: `overrides.env.RTK_TELEMETRY_DISABLED=1` in `providers.json` (covers the in-Claude hook), and `export RTK_TELEMETRY_DISABLED=1` in `.zshrc` (covers manual `rtk` use in the shell). rtk telemetry is also off by default / opt-in, so this just makes the opt-out explicit and reproducible.
 
 After install, **restart Claude Code** for the hook to take effect.

@@ -133,7 +133,7 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 
 # rtk (Rust Token Killer) — opt out of telemetry for all terminal use too.
-# In-Claude sessions get this via the rtk profile's settings.json env; this
+# In-Claude sessions get this via the default profile's settings.json env; this
 # covers manual `rtk gain`/`rtk discover` runs in the shell.
 export RTK_TELEMETRY_DISABLED=1
 

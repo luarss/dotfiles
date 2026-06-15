@@ -7,7 +7,18 @@
     "overrides": {
       "model": "opus[1m]",
       "effortLevel": "high",
+      "env": { "RTK_TELEMETRY_DISABLED": "1" },
       "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              { "type": "command", "command": "bash ~/.claude/hooks/remote-command-guard.sh" },
+              { "type": "command", "command": "bash ~/.claude/hooks/db-guard.sh" },
+              { "type": "command", "command": "rtk hook claude" }
+            ]
+          }
+        ],
         "PostToolUse": [
           {
             "matcher": "Write|Edit",
@@ -47,28 +58,6 @@
       "model": "opus",
       "alwaysThinkingEnabled": true,
       "promptSuggestionEnabled": false
-    }
-  },
-  "rtk": {
-    "dir": ".claude-fourth-profile",
-    "aliases": ["r-claude"],
-    "thirdParty": false,
-    "overrides": {
-      "model": "opus[1m]",
-      "effortLevel": "high",
-      "env": { "RTK_TELEMETRY_DISABLED": "1" },
-      "hooks": {
-        "PreToolUse": [
-          {
-            "matcher": "Bash",
-            "hooks": [
-              { "type": "command", "command": "bash ~/.claude/hooks/remote-command-guard.sh" },
-              { "type": "command", "command": "bash ~/.claude/hooks/db-guard.sh" },
-              { "type": "command", "command": "rtk hook claude" }
-            ]
-          }
-        ]
-      }
     }
   }
 }
