@@ -1,6 +1,9 @@
 {
   "env": {
-    "ENABLE_LSP_TOOL": "1"
+    "ENABLE_LSP_TOOL": "1",
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+    "DISABLE_INSTALL_GITHUB_APP_COMMAND": "1",
+    "DO_NOT_TRACK": "1"
   },
   "permissions": {
     "deny": [
