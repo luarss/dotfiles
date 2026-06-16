@@ -388,6 +388,46 @@ teardown() {
   [ -L "$HOME/.claude/scheduled-tasks/unrelated-dangling" ]
 }
 
+@test "base_env_vars_present_in_default_profile" {
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local f="$HOME/.claude/settings.json"
+  [ "$(jq -r '.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' "$f")" = "1" ]
+  [ "$(jq -r '.env.DISABLE_INSTALL_GITHUB_APP_COMMAND' "$f")" = "1" ]
+  [ "$(jq -r '.env.DO_NOT_TRACK' "$f")" = "1" ]
+}
+
+@test "base_env_vars_propagate_to_third_party_profiles" {
+  export DEEPSEEK_AUTH_TOKEN="tok"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local f
+  for f in "$HOME/.claude-second-profile/settings.json" \
+           "$HOME/.claude-third-profile/settings.json"; do
+    [ "$(jq -r '.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' "$f")" = "1" ]
+    [ "$(jq -r '.env.DISABLE_INSTALL_GITHUB_APP_COMMAND' "$f")" = "1" ]
+    [ "$(jq -r '.env.DO_NOT_TRACK' "$f")" = "1" ]
+  done
+}
+
+@test "base_env_merges_with_provider_env_additions" {
+  # The jq deep-merge (`*`) must preserve base env keys alongside the
+  # provider-injected ones, not clobber the whole env object.
+  export DEEPSEEK_AUTH_TOKEN="tok"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local f="$HOME/.claude-second-profile/settings.json"
+  # base keys survive the merge
+  [ "$(jq -r '.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' "$f")" = "1" ]
+  [ "$(jq -r '.env.ENABLE_LSP_TOOL' "$f")" = "1" ]
+  # provider-injected keys are present too
+  [ "$(jq -r '.env.ANTHROPIC_BASE_URL' "$f")" = "https://api.deepseek.com/anthropic" ]
+  [ "$(jq -r '.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' "$f")" = "1" ]
+}
+
 @test "skills_install_skips_real_dir" {
   # A manually installed (real) skill dir must be left untouched
   mkdir -p "$HOME/.claude/skills/obsidian-journal"
