@@ -428,6 +428,73 @@ teardown() {
   [ "$(jq -r '.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' "$f")" = "1" ]
 }
 
+@test "skill_scan_guard_wired_into_default_profile_only" {
+  hostname() { echo "Shuis-MacBook-Air"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # Default profile's Bash PreToolUse hooks include the skill-scan guard...
+  local default_has
+  default_has=$(jq -r '
+    [.hooks.PreToolUse[] | select(.matcher=="Bash") | .hooks[].command]
+    | map(select(test("skill-scan-guard"))) | length
+  ' "$HOME/.claude/settings.json")
+  [ "$default_has" -ge 1 ]
+
+  # ...but the third-party profiles (no SNYK_TOKEN injected) do not.
+  local second_has
+  second_has=$(jq -r '
+    [.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[].command]
+    | map(select(test("skill-scan-guard"))) | length
+  ' "$HOME/.claude-second-profile/settings.json")
+  [ "$second_has" -eq 0 ]
+}
+
+@test "snyk_token_injected_on_work_machine_when_set" {
+  hostname() { echo "Shuis-MacBook-Air"; }
+  export -f hostname
+  export SNYK_TOKEN="test-snyk-token-abc"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local token
+  token=$(jq -r '.env.SNYK_TOKEN' "$HOME/.claude/settings.json")
+  [ "$token" = "test-snyk-token-abc" ]
+  [[ "$output" == *"env.SNYK_TOKEN (skill-scan)"* ]]
+}
+
+@test "snyk_token_skipped_on_personal_laptop" {
+  hostname() { echo "personal-macbook-pro"; }
+  export -f hostname
+  export SNYK_TOKEN="test-snyk-token-abc"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # Secret must never be written into a personal machine's settings.json.
+  local token
+  token=$(jq -r '.env.SNYK_TOKEN // "MISSING"' "$HOME/.claude/settings.json")
+  [ "$token" = "MISSING" ]
+  [[ "$output" == *"SKIP  SNYK_TOKEN injection (non-work machine)"* ]]
+}
+
+@test "snyk_token_warns_on_work_machine_when_unset" {
+  hostname() { echo "Shuis-MacBook-Air"; }
+  export -f hostname
+  unset SNYK_TOKEN || true
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local token
+  token=$(jq -r '.env.SNYK_TOKEN // "MISSING"' "$HOME/.claude/settings.json")
+  [ "$token" = "MISSING" ]
+  [[ "$output" == *"WARN  SNYK_TOKEN not set"* ]]
+}
+
 @test "skills_install_skips_real_dir" {
   # A manually installed (real) skill dir must be left untouched
   mkdir -p "$HOME/.claude/skills/obsidian-journal"

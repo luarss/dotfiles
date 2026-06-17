@@ -38,7 +38,7 @@ cl --list        # list available providers
 
 The default `claude` profile (`.claude`) has [rtk](https://github.com/rtk-ai/rtk) wired in for token-saving command rewrites. `rtk` itself is installed via the `Brewfile` (`brew "rtk"`). It lives **only** in the default profile, so the third-party profiles (`s-claude`, `d-claude`) stay untouched:
 
-- Its `overrides.hooks.PreToolUse` re-declares the shared guards (`remote-command-guard.sh`, `db-guard.sh`, `db-rate-limit.sh`) **plus** `rtk hook claude`, which transparently rewrites Bash commands (`git status` → `rtk git status`). The rtk hook is listed **last** so the security guards inspect the original command first. (The `mcp__.*mysql.*` matcher carrying `db-rate-limit.sh` is re-declared here too.)
+- Its `overrides.hooks.PreToolUse` re-declares the shared guards (`remote-command-guard.sh`, `db-guard.sh`, `db-rate-limit.sh`) **plus** the work-laptop `skill-scan-guard.sh` (see Security) **plus** `rtk hook claude`, which transparently rewrites Bash commands (`git status` → `rtk git status`). The rtk hook is listed **last** so the security guards inspect the original command first. (The `mcp__.*mysql.*` matcher carrying `db-rate-limit.sh` is re-declared here too.)
 - `.claude/CLAUDE.md` `@`-imports `RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` symlinks `RTK.md` into a profile only when that profile ships one (only the default does).
 - **Telemetry is disabled** two ways: `overrides.env.RTK_TELEMETRY_DISABLED=1` in `providers.json` (covers the in-Claude hook), and `export RTK_TELEMETRY_DISABLED=1` in `.zshrc` (covers manual `rtk` use in the shell). rtk telemetry is also off by default / opt-in, so this just makes the opt-out explicit and reproducible.
 
@@ -58,6 +58,7 @@ No edits to `.zshrc`, `install.sh`, or any `settings.json` are needed — they a
 # Set the token env vars referenced by providers.json first (see .env.example)
 export DEEPSEEK_AUTH_TOKEN="..."    # for s-claude / cl deepseek
 export XIAOMI_AUTH_TOKEN="..."      # for d-claude / cl mimo
+export SNYK_TOKEN="..."             # work laptop only — skill-scan-guard's agent-scan creds
 
 ./install.sh
 ```
@@ -77,6 +78,12 @@ Every profile's `settings.json` is generated from `settings.base.json`, which ca
 - `.claude/hooks/db-guard.sh` — blocks destructive SQL run through the `mysql`/`mariadb`/`psql` CLIs: `DROP TABLE/DATABASE/SCHEMA`, `TRUNCATE`, `DELETE` without `WHERE`, and `ALTER TABLE ... DROP`. It only inspects inline SQL in the command string; SQL loaded from a file (`psql -f`) is not checked.
 - `.claude/hooks/db-rate-limit.sh` — sliding-window rate limiter for MySQL access: blocks once more than **20 qualifying calls happen within 60s** (edit `LIMIT`/`WINDOW` at the top of the script). It counts two call types: `mysql`/`mariadb` CLI invoked to run a statement (a client token followed by `-e`/`--execute` or a heredoc, mirroring `db-guard`'s detection) via the `Bash` matcher, and `mcp__*mysql*` MCP tool calls via the `mcp__.*mysql.*` matcher. Counts are kept per-machine in a timestamp log under `$TMPDIR/claude-mysql-ratelimit/`; entries older than the window are pruned on every call, so the limiter self-heals and needs no cleanup. The block message reports how long to wait before the oldest in-window call expires.
 - `.claude/hooks/remote-command-guard.sh` — blocks dangerous Bash across 7 categories (destructive deletion, env/secret leakage, path traversal, external comms, permission changes, process termination, command injection). **It only fires in orchestrated/remote sessions** — i.e. when `OPENCLAW_SESSION_ID` or `HERMES_SESSION_ID` is set — and no-ops in normal interactive local sessions so day-to-day `curl`/`ssh`/`sudo`/`kill` stay allowed. This complements the `Read(...)` deny rules, which only cover file-reading commands Claude recognizes (`cat`/`head`/`tail`/`sed`/`grep`) and not `env`/`printenv`/`echo $VAR` or indirect readers. The env/secret-leakage category is broad: env/`set`/`declare -p` dumps; `echo`/`printf` of secret-ish vars (incl. `${VAR}`); reading `.env`/`credentials`/`secrets.*` via **any** reader; and references to cloud-cred files (`~/.aws`, `~/.ssh` except `known_hosts`, `~/.kube`, `~/.config/gcloud`, `.git-credentials`, `.pgpass`, `.netrc`), shell history, private keys, and the macOS keychain. Benign vars like `$PATH`/`$PWD` and `.env.example` templates are deliberately allowed.
+
+`.claude/hooks/skill-scan-guard.sh` is **not** in `settings.base.json` — it is wired **only into the default `.claude` profile** via `providers.json` overrides (listed before `rtk hook claude` so it sees the original command), and runs **only on the work laptop**:
+
+- It vets a Claude plugin/skill with **Snyk agent-scan** (`uvx snyk-agent-scan@0.5.10 --json`, version-pinned — see Dependency Locking) **before** it is installed, blocking (exit 2) on any reported `--json` issue (the scanner exits 0 even on findings, so the count is the signal; unparseable output fails closed). Like the routine restore and the sonnet switch, it self-gates on `hostname -s` == `$DOTFILES_WORK_HOSTNAME` (default `Shuis-MacBook-Air`) and no-ops everywhere else, so personal machines never scan and never need a token.
+- It fires on `claude plugin install <target>` and `claude plugin marketplace add <target>`. A **local path / SKILL.md** is scanned in place; a **git URL** (`https://….git`, `git@…`, `github:o/r`) is shallow-cloned to a temp dir, scanned, then removed; a **bare marketplace name** has nothing local to fetch so it is allowed with a reminder to scan post-install. Skills cloned by hand (plain `git clone` into `~/.claude/skills`) are out of scope — the same kind of blind spot as `db-guard`'s `psql -f`.
+- **Fail-closed**: if a scannable target is present but the scanner can't run (default uvx scanner with no `SNYK_TOKEN`, or the scanner binary missing), the install is blocked. `install.sh` injects `SNYK_TOKEN` (from `.env`) into the default profile's `settings.json` env **on the work machine only**, so the secret never lands on personal machines or in git (`settings.json` is generated into `$HOME`, never tracked). The scanner command is overridable via `SKILL_SCAN_CMD` (used by the test suite to stub the scan offline).
 
 ## Dependency Locking (Supply Chain Hygiene)
 
@@ -99,6 +106,9 @@ Pinned: `zsh-users/zsh-autosuggestions` v0.7.1, `zsh-users/zsh-syntax-highlighti
 
 **npm CLI tools** (`tools/`, installed by `install_node_tools` in `install.sh`) — exact versions in `tools/package.json`; the committed lockfile carries sha512 integrity pins verified by `npm ci`. Binaries are symlinked into `~/.local/bin` — never alias to `npx <pkg>`. To bump: edit `tools/package.json`, `npm install --package-lock-only`, commit, re-run `./install.sh`.
 Pinned: `ccusage` 20.0.9
+
+**uvx / PyPI tools** — pin the exact version in the run command (never `@latest`); PyPI forbids re-uploading a version, so `@X.Y.Z` resolves to that exact artifact. `snyk-agent-scan` is closed-source with no git repo, so the immutable reference is version + wheel sha256, not a commit SHA. To bump: edit the version in `.claude/hooks/skill-scan-guard.sh` and the hash here.
+Pinned: `snyk-agent-scan` 0.5.10 — wheel `sha256:997f5152884d3edcf0dbfa8c81fe6b67381e463b53e24184dfa0182fdab9d2b9`
 
 **Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.
 
