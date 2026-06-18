@@ -45,10 +45,6 @@ generate_profiles() {
     if [ -e "$DOTFILES/$dir/RTK.md" ]; then symlink "$dir/RTK.md"; fi
     ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
-    # keybindings.json is a shared UI preference; symlink the single repo copy
-    # into every profile dir (same pattern as status-line.sh).
-    ln -sf "$DOTFILES/keybindings.json" "$HOME/$dir/keybindings.json"
-    echo "LINK  $HOME/$dir/keybindings.json -> $DOTFILES/keybindings.json"
     jq -n --argjson base "$base" --argjson p "$pentry" --arg token "$token" \
       -f "$DOTFILES/gen-settings.jq" > "$HOME/$dir/settings.json"
     echo "GEN   $HOME/$dir/settings.json ($name)"
