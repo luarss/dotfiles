@@ -47,11 +47,17 @@ generate_profiles() {
     [ -n "$token_var" ] && token="${!token_var:-}"
 
     mkdir -p "$HOME/$dir"
-    symlink "$dir/CLAUDE.md"
     symlink "$dir/AGENTS.md"
-    # RTK.md is profile-specific (only the rtk profile ships one); its CLAUDE.md
-    # @-imports it. Symlink only when the profile actually provides the file.
-    if [ -e "$DOTFILES/$dir/RTK.md" ]; then symlink "$dir/RTK.md"; fi
+    # RTK.md is macOS-only (rtk is a Homebrew package). On macOS with an RTK profile,
+    # generate CLAUDE.md with @RTK.md included; everywhere else, symlink it as-is.
+    if [ "$(uname)" = "Darwin" ] && [ -e "$DOTFILES/$dir/RTK.md" ]; then
+      symlink "$dir/RTK.md"
+      rm -f "$HOME/$dir/CLAUDE.md"
+      printf '@AGENTS.md\n\n@RTK.md\n' > "$HOME/$dir/CLAUDE.md"
+      echo "GEN   $HOME/$dir/CLAUDE.md (darwin+rtk)"
+    else
+      symlink "$dir/CLAUDE.md"
+    fi
     ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
     jq -n --argjson base "$base" --argjson p "$pentry" --arg token "$token" \
