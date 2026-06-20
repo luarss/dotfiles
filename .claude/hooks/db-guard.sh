@@ -15,6 +15,10 @@
 
 INPUT=$(cat)
 
+# Fast pre-filter: skip jq if no SQL client keyword appears in the raw payload.
+# jq startup costs ~25ms; this makes the no-op path nearly free.
+[[ "$INPUT" == *mysql* || "$INPUT" == *mariadb* || "$INPUT" == *psql* ]] || exit 0
+
 COMMAND=$(jq -r '.tool_input.command // ""' <<<"$INPUT" 2>/dev/null)
 [[ -z "$COMMAND" ]] && exit 0
 

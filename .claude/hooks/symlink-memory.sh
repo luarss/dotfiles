@@ -14,8 +14,13 @@
 set -e
 
 PAYLOAD=$(cat)
-FILE_PATH=$(jq -r '.tool_input.file_path // empty' <<<"$PAYLOAD")
-CWD=$(jq -r '.cwd // empty' <<<"$PAYLOAD")
+
+# Fast pre-filter: skip both jq calls unless this looks like a memory-path write.
+[[ "$PAYLOAD" == */memory/* ]] || exit 0
+
+{ IFS= read -r FILE_PATH; IFS= read -r CWD; } < <(
+  jq -r '.tool_input.file_path // empty, .cwd // empty' <<<"$PAYLOAD"
+)
 
 [[ -z "$FILE_PATH" || -z "$CWD" ]] && exit 0
 [[ "$FILE_PATH" =~ /\.claude[^/]*/projects/-[^/]+/memory/[^/]+\.md$ ]] || exit 0
@@ -52,26 +57,22 @@ LINK_FRAG="[[memory_${FRIENDLY}/${BASENAME_NOEXT}"
 # Skip if this memory is already referenced anywhere in the index
 grep -qF "$LINK_FRAG" "$INDEX" && exit 0
 
-# Pull title + blurb from YAML frontmatter (best-effort; falls back to filename)
-NAME=$(awk '
+# Pull title + blurb from YAML frontmatter in a single awk pass (two output lines)
+{ IFS= read -r NAME; IFS= read -r DESC; } < <(awk '
   /^---$/ { c++; if (c == 2) exit; next }
   c == 1 && /^name:/ {
-    sub(/^name:[[:space:]]*/, "")
-    sub(/^"/, ""); sub(/"$/, "")
-    sub(/^'\''/, ""); sub(/'\''$/, "")
-    print; exit
+    val = $0; sub(/^name:[[:space:]]*/, "", val)
+    gsub(/^"|"$|^'\''|'\''$/, "", val)
+    name = val
   }
+  c == 1 && /^description:/ {
+    val = $0; sub(/^description:[[:space:]]*/, "", val)
+    gsub(/^"|"$|^'\''|'\''$/, "", val)
+    desc = val
+  }
+  END { print name; print desc }
 ' "$FILE_PATH")
 
-DESC=$(awk '
-  /^---$/ { c++; if (c == 2) exit; next }
-  c == 1 && /^description:/ {
-    sub(/^description:[[:space:]]*/, "")
-    sub(/^"/, ""); sub(/"$/, "")
-    sub(/^'\''/, ""); sub(/'\''$/, "")
-    print; exit
-  }
-' "$FILE_PATH")
 
 TITLE="${NAME:-$BASENAME_NOEXT}"
 if [[ -n "$DESC" ]]; then

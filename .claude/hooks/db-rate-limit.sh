@@ -17,11 +17,12 @@ WINDOW=60     # ... within this many seconds
 
 INPUT=$(cat)
 
+# Fast pre-filter: skip all jq calls if neither 'mysql'/'mariadb' nor an MCP
+# mysql tool name appear in the raw payload. jq startup costs ~25ms each.
+[[ "$INPUT" == *mysql* || "$INPUT" == *mariadb* ]] || exit 0
+
 TOOL_NAME=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 [[ -z "$TOOL_NAME" ]] && exit 0
-
-# Lowercase the tool name once for case-insensitive MCP matching.
-TOOL_LC=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
 
 relevant=0
 case "$TOOL_NAME" in
@@ -35,7 +36,7 @@ case "$TOOL_NAME" in
     ;;
   *)
     # Any MySQL MCP tool, e.g. mcp__mysql__query, mcp__mcp_mysql__exec.
-    [[ "$TOOL_LC" == mcp__*mysql* ]] && relevant=1
+    [[ "$TOOL_NAME" == mcp__*mysql* || "$TOOL_NAME" == mcp__*MySQL* ]] && relevant=1
     ;;
 esac
 
