@@ -22,14 +22,6 @@ symlink() {
   echo "LINK  $dst -> $src"
 }
 
-# Copy instead of symlink — for files where a real inode is required (e.g. bwrap
-# can't bind-mount a symlink into a sandbox namespace on some Linux setups).
-copy_file() {
-  local src="$DOTFILES/$1"
-  local dst="$HOME/$1"
-  cp "$src" "$dst"
-  echo "COPY  $dst <- $src"
-}
 
 # Generate every profile's settings.json from settings.base.json + providers.json.
 # Each provider entry supplies dir/aliases/token/baseUrl/models + freeform overrides;
@@ -242,8 +234,7 @@ install_node_tools() {
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 
-# .zshrc is copied (not symlinked) so bwrap can bind-mount a real inode on Linux.
-copy_file .zshrc
+symlink .zshrc
 symlink .env.example
 
 # Profiles + zsh wrappers — both driven by providers.json (single source of truth)
