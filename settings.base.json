@@ -88,6 +88,7 @@
     "pyright-lsp@claude-plugins-official": true,
     "chrome-devtools-mcp@claude-plugins-official": true
   },
+  "ignorePatterns": ["bazel-*"],
   "attribution": {
     "commit": "",
     "pr": ""
