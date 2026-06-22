@@ -27,6 +27,14 @@
 BAR_WIDTH=10
 CONTEXT_WARN_PCT=70
 CONTEXT_CRIT_PCT=90
+
+# Subscription usage thresholds (5-hour / 7-day rate-limit windows). These come
+# straight from Claude Code's stdin JSON (.rate_limits.*.used_percentage) and
+# are present ONLY for Claude.ai Pro/Max OAuth sessions — third-party providers
+# never send them. Gated behind SHOW_USAGE_LIMITS so only the default profile
+# shows them (set via providers.json overrides.env).
+USAGE_WARN_PCT=70
+USAGE_CRIT_PCT=90
 DEFAULT_CTX_LIMIT=200000
 CTX_LIMIT_1M=1000000
 
@@ -79,6 +87,11 @@ else
 fi
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 DIR=$(basename "$CWD")
+
+# Subscription rate-limit usage. Each window may be independently absent (// empty),
+# and the whole block is absent outside Pro/Max OAuth sessions.
+RL_5H=$(echo "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+RL_7D=$(echo "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Git Status
@@ -185,11 +198,45 @@ build_progress_bar() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Subscription Usage (Pro/Max OAuth only)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Color a usage percentage by threshold, returning a colored "NN%".
+colorize_usage_pct() {
+    local pct=$1 pct_int color
+    pct_int=${pct%.*}
+    pct_int=${pct_int:-0}
+
+    if [[ $pct_int -ge $USAGE_CRIT_PCT ]]; then
+        color=$C_RED
+    elif [[ $pct_int -ge $USAGE_WARN_PCT ]]; then
+        color=$C_YELLOW
+    else
+        color=$C_GREEN
+    fi
+
+    printf "%b%s%%%b" "$color" "$pct_int" "$C_RESET"
+}
+
+# Compact 5h/7d subscription-usage readout. No-op unless SHOW_USAGE_LIMITS=1
+# (default profile only) and at least one rate-limit window is present.
+build_usage_segment() {
+    [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
+
+    local seg=""
+    [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h limit${C_RESET} $(colorize_usage_pct "$RL_5H")"
+    [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}·${C_RESET} ${C_DIM}7d limit${C_RESET} $(colorize_usage_pct "$RL_7D")"
+    [[ -z "$seg" ]] && return 0
+
+    printf " %b⏳ usage:%b%s" "$C_DIM" "$C_RESET" "$seg"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
 main() {
-    local total_in out_tok cache_read ctx_pct cache_pct duration git_info
+    local total_in out_tok cache_read ctx_pct cache_pct duration git_info usage_seg
     local cache_color cache_warn=""
 
     read -r total_in out_tok cache_read <<< "$(get_token_metrics)"
@@ -218,9 +265,10 @@ main() {
 
     duration=$(get_session_duration)
     git_info=$(get_git_info)
+    usage_seg=$(build_usage_segment)
 
     # Output
-    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b" \
+    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b%s" \
         "$C_BOLD_GREEN" "$C_RESET" \
         "$C_CYAN" "$DIR" "$C_RESET" \
         "$git_info" \
@@ -229,7 +277,8 @@ main() {
         "$cache_color" "$cache_pct" "$C_RESET" "$C_DIM" "$C_RESET" \
         "$cache_warn" \
         "$(build_progress_bar "$ctx_pct")" \
-        "$C_CYAN" "$duration" "$C_RESET"
+        "$C_CYAN" "$duration" "$C_RESET" \
+        "$usage_seg"
 }
 
 main

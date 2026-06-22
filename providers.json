@@ -7,7 +7,7 @@
     "overrides": {
       "model": "opus[1m]",
       "effortLevel": "high",
-      "env": { "RTK_TELEMETRY_DISABLED": "1" },
+      "env": { "RTK_TELEMETRY_DISABLED": "1", "SHOW_USAGE_LIMITS": "1" },
       "hooks": {
         "PreToolUse": [
           {
