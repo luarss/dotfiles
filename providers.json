@@ -61,7 +61,11 @@
     "token": "XIAOMI_AUTH_TOKEN",
     "thirdParty": true,
     "baseUrl": "https://api.xiaomimimo.com/anthropic",
-    "models": "mimo-v2.5",
+    "models": {
+      "haiku": "mimo-v2.5",
+      "sonnet": "mimo-v2.5-pro",
+      "opus": "mimo-v2.5-pro"
+    },
     "overrides": {
       "model": "opus",
       "alwaysThinkingEnabled": true,
