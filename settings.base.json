@@ -81,7 +81,8 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/status-line.sh"
+    "command": "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/status-line.sh",
+    "refreshInterval": 2
   },
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true,

@@ -93,6 +93,11 @@ DIR=$(basename "$CWD")
 RL_5H=$(echo "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 RL_7D=$(echo "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 
+# Window reset times (unix epoch seconds, // empty when absent). Used to show
+# how long until each window resets.
+RL_5H_RESET=$(echo "$INPUT" | jq -r '.rate_limits.five_hour.resets_at // empty')
+RL_7D_RESET=$(echo "$INPUT" | jq -r '.rate_limits.seven_day.resets_at // empty')
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Git Status
 # ─────────────────────────────────────────────────────────────────────────────
@@ -218,14 +223,47 @@ colorize_usage_pct() {
     printf "%b%s%%%b" "$color" "$pct_int" "$C_RESET"
 }
 
-# Compact 5h/7d subscription-usage readout. No-op unless SHOW_USAGE_LIMITS=1
-# (default profile only) and at least one rate-limit window is present.
+# Format seconds-until-reset as a compact "(resets 2h13m)" / "(resets 14m)"
+# string. Empty when the reset timestamp is absent or already in the past.
+format_reset() {
+    local reset_at=$1 now remaining days hours mins
+    [[ -z "$reset_at" ]] && return 0
+
+    now=$(date +%s)
+    remaining=$((reset_at - now))
+    [[ "$remaining" -le 0 ]] 2>/dev/null && return 0
+
+    days=$((remaining / 86400))
+    hours=$(((remaining % 86400) / 3600))
+    mins=$(((remaining % 3600) / 60))
+
+    if [[ $days -gt 0 ]]; then
+        printf " %b(resets %dd%dh)%b" "$C_DIM" "$days" "$hours" "$C_RESET"
+    elif [[ $hours -gt 0 ]]; then
+        printf " %b(resets %dh%dm)%b" "$C_DIM" "$hours" "$mins" "$C_RESET"
+    else
+        printf " %b(resets %dm)%b" "$C_DIM" "$mins" "$C_RESET"
+    fi
+}
+
+# 5h/7d subscription-usage readout. No-op unless SHOW_USAGE_LIMITS=1 (default
+# profile only) and at least one rate-limit window is present.
+#   mode "full"    — "⏳ usage: 5h limit 36% (resets 2h13m) · 7d limit 18% (resets 2d21h)"
+#   mode "compact" — "⏳ 5h 36% 7d 18%"   (labels + resets dropped to save space)
 build_usage_segment() {
     [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
+    local mode=${1:-full} seg=""
 
-    local seg=""
-    [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h limit${C_RESET} $(colorize_usage_pct "$RL_5H")"
-    [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}·${C_RESET} ${C_DIM}7d limit${C_RESET} $(colorize_usage_pct "$RL_7D")"
+    if [[ "$mode" == "compact" ]]; then
+        [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")"
+        [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")"
+        [[ -z "$seg" ]] && return 0
+        printf " %b⏳%b%s" "$C_DIM" "$C_RESET" "$seg"
+        return 0
+    fi
+
+    [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h limit${C_RESET} $(colorize_usage_pct "$RL_5H")$(format_reset "$RL_5H_RESET")"
+    [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}·${C_RESET} ${C_DIM}7d limit${C_RESET} $(colorize_usage_pct "$RL_7D")$(format_reset "$RL_7D_RESET")"
     [[ -z "$seg" ]] && return 0
 
     printf " %b⏳ usage:%b%s" "$C_DIM" "$C_RESET" "$seg"
@@ -265,20 +303,61 @@ main() {
 
     duration=$(get_session_duration)
     git_info=$(get_git_info)
-    usage_seg=$(build_usage_segment)
 
-    # Output
-    printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b%s" \
-        "$C_BOLD_GREEN" "$C_RESET" \
-        "$C_CYAN" "$DIR" "$C_RESET" \
-        "$git_info" \
-        "$C_DIM" "$MODEL" "$C_RESET" \
-        "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" \
-        "$cache_color" "$cache_pct" "$C_RESET" "$C_DIM" "$C_RESET" \
-        "$cache_warn" \
-        "$(build_progress_bar "$ctx_pct")" \
-        "$C_CYAN" "$duration" "$C_RESET" \
-        "$usage_seg"
+    # Render the line with a given cache-warning string and usage segment. The
+    # degradation chain below swaps these two args to shrink the line.
+    render() {
+        printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b%s" \
+            "$C_BOLD_GREEN" "$C_RESET" \
+            "$C_CYAN" "$DIR" "$C_RESET" \
+            "$git_info" \
+            "$C_DIM" "$MODEL" "$C_RESET" \
+            "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" \
+            "$cache_color" "$cache_pct" "$C_RESET" "$C_DIM" "$C_RESET" \
+            "$1" \
+            "$(build_progress_bar "$ctx_pct")" \
+            "$C_CYAN" "$duration" "$C_RESET" \
+            "$2"
+    }
+
+    # Width-aware degradation. Claude Code exports COLUMNS (v2.1.153+); fall back
+    # to 80. We try progressively smaller renderings and emit the first that fits
+    # the terminal, so a narrow window drops the least useful detail first instead
+    # of getting truncated mid-segment. Order, most→least verbose:
+    #   1. full usage + reset times + cache warning
+    #   2. compact usage (no labels/resets) + cache warning
+    #   3. compact usage, no cache-warning text (red ⚡% still signals it)
+    #   4. no usage, no cache-warning text
+    local cols=${COLUMNS:-80} line
+    local usage_full usage_compact
+    usage_full=$(build_usage_segment full)
+    usage_compact=$(build_usage_segment compact)
+
+    for line in \
+        "$(render "$cache_warn" "$usage_full")" \
+        "$(render "$cache_warn" "$usage_compact")" \
+        "$(render "$cache_warn" "")" \
+        "$(render "" "")"; do
+        if [[ $(visible_len "$line") -le $cols ]]; then
+            printf '%s' "$line"
+            return 0
+        fi
+    done
+
+    # Even the smallest form overflows — emit it anyway (terminal will truncate).
+    printf '%s' "$line"
+}
+
+# Visible (display-cell) length of a string: strip ANSI escape sequences, count
+# characters, then add 1 per double-width glyph (the emoji-ish symbols render as
+# 2 cells in most terminals but count as 1 code point). Used to fit output to the
+# terminal width.
+visible_len() {
+    local stripped wide
+    stripped=$(printf '%s' "$1" | sed -E $'s/\033\\[[0-9;]*m//g')
+    # Count occurrences of known 2-cell glyphs: ➜ ⏱ ⏳ ⚡ ⚠
+    wide=$(printf '%s' "$stripped" | grep -oE '➜|⏱|⏳|⚡|⚠' | grep -c .)
+    printf '%s' "$(( ${#stripped} + wide ))"
 }
 
 main
