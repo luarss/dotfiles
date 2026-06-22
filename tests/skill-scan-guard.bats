@@ -128,6 +128,48 @@ run_hook() {
   [[ "$output" == *"BLOCKED (skill-scan)"* ]]
 }
 
+@test "work host: hardcoded nus-etp org marketplace skips the scan" {
+  export STUB_ISSUES=1   # scanner would block; built-in allowlist short-circuits
+  run_hook "claude plugin marketplace add git@github.com:nus-etp/skills.git"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"matches allowlist"* ]]
+  [[ "$output" != *"stub-scan"* ]]
+}
+
+@test "work host: hardcoded org allowlist matches the https URL form too" {
+  export STUB_ISSUES=1
+  run_hook "claude plugin install https://github.com/nus-etp/some-skill.git"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"matches allowlist"* ]]
+}
+
+@test "work host: allowlisted local path glob skips the scan" {
+  mkdir -p "$WORKDIR/skills"
+  export STUB_ISSUES=1   # scanner would block, but allowlist short-circuits it
+  export SKILL_SCAN_ALLOWLIST="$WORKDIR/*"
+  run_hook "claude plugin install $WORKDIR/skills"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"matches allowlist"* ]]
+  [[ "$output" != *"stub-scan"* ]]
+}
+
+@test "work host: allowlisted git URL glob skips the scan" {
+  export STUB_ISSUES=1
+  export SKILL_SCAN_ALLOWLIST="git@github.com:my-org/* https://github.com/my-org/*"
+  run_hook "claude plugin marketplace add git@github.com:my-org/skills.git"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"matches allowlist"* ]]
+}
+
+@test "work host: non-allowlisted target is still scanned and blocked" {
+  mkdir -p "$WORKDIR/other"
+  export STUB_ISSUES=1
+  export SKILL_SCAN_ALLOWLIST="$WORKDIR/skills"   # does not match $WORKDIR/other
+  run_hook "claude plugin install $WORKDIR/other"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"BLOCKED (skill-scan)"* ]]
+}
+
 @test "work host: unparseable scanner output fails closed (blocks)" {
   # Scanner ran but emitted no JSON (e.g. crashed) -> cannot vet -> block.
   GARBAGE="$WORKDIR/garbage-scan.sh"

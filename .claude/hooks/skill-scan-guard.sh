@@ -24,6 +24,10 @@
 # hand (plain `git clone` into ~/.claude/skills) are out of scope, like
 # db-guard's `psql -f` blind spot.
 #
+# Allowlist: targets matching a trusted-marketplace glob skip the scan. The
+# built-in list is the nus-etp org (all URL forms); SKILL_SCAN_ALLOWLIST
+# (whitespace/newline-separated shell globs) appends ad-hoc entries.
+#
 # Fail-closed: when a scannable target IS present but the scanner can't run
 # (default uvx scanner with no SNYK_TOKEN, or the scanner binary is missing),
 # the install is BLOCKED rather than waved through unscanned.
@@ -60,6 +64,32 @@ fi
 # Strip surrounding quotes from the captured target.
 target="${target%\"}"; target="${target#\"}"
 target="${target%\'}"; target="${target#\'}"
+
+# --- Trusted-source allowlist (skip the scan) -------------------------------
+# Targets matching any of these globs are treated as trusted internal
+# marketplaces and skip the scan entirely. Each entry is a shell GLOB (not
+# regex) matched against the raw target, so one list covers every URL form the
+# guard recognizes (and local paths). The built-in list is the nus-etp org's
+# marketplace; SKILL_SCAN_ALLOWLIST (whitespace/newline-separated globs) is
+# appended for ad-hoc additions without editing this file.
+_allow=(
+  'https://github.com/nus-etp/*'
+  'git@github.com:nus-etp/*'
+  'github:nus-etp/*'
+)
+if [[ -n "${SKILL_SCAN_ALLOWLIST:-}" ]]; then
+  # read -ra word-splits without filesystem glob-expansion, so patterns stay
+  # literal; the unquoted RHS of [[ == ]] below is what does the glob match.
+  IFS=$' \t\n' read -rd '' -a _extra <<<"$SKILL_SCAN_ALLOWLIST" || true
+  _allow+=("${_extra[@]}")
+fi
+for pat in "${_allow[@]}"; do
+  # shellcheck disable=SC2053
+  if [[ "$target" == $pat ]]; then
+    echo "skill-scan: '$target' matches allowlist ('$pat') — trusted internal source, skipping scan." >&2
+    exit 0
+  fi
+done
 
 block() { echo "BLOCKED (skill-scan): $1" >&2; echo "Command: ${COMMAND:0:200}" >&2; exit 2; }
 
