@@ -24,20 +24,20 @@
     "chrome-devtools-mcp@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/chrome-devtools-mcp/1.1.1",
-        "version": "1.1.1",
+        "installPath": "/home/luars/.claude/plugins/cache/claude-plugins-official/chrome-devtools-mcp/1.4.0",
+        "version": "1.4.0",
         "installedAt": "2026-05-16T01:17:18.629Z",
-        "lastUpdated": "2026-05-30T04:06:52.557Z",
+        "lastUpdated": "2026-06-24T12:23:29.342Z",
         "gitCommitSha": "a1612be8e01401cf1711c64bc2ef5da5763ba956"
       }
     ],
     "skill-creator@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/shuisongluar/.claude/plugins/cache/claude-plugins-official/skill-creator/unknown",
+        "installPath": "/home/luars/.claude/plugins/cache/claude-plugins-official/skill-creator/unknown",
         "version": "unknown",
         "installedAt": "2026-05-16T07:51:41.813Z",
-        "lastUpdated": "2026-05-16T07:51:41.813Z"
+        "lastUpdated": "2026-06-24T12:23:19.650Z"
       }
     ]
   }
