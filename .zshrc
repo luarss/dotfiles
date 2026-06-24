@@ -132,6 +132,9 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 export PATH="$HOME/.local/bin:$PATH"
 
+# Homebrew (macOS) — both Apple Silicon (/opt) and Intel (/usr/local)
+[[ "$OSTYPE" == darwin* ]] && export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # rtk (Rust Token Killer) — opt out of telemetry for all terminal use too.
 # In-Claude sessions get this via the default profile's settings.json env; this
 # covers manual `rtk gain`/`rtk discover` runs in the shell.
