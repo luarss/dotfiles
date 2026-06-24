@@ -30,7 +30,9 @@ teardown() {
   export XIAOMI_AUTH_TOKEN="$ORIGINAL_XIAOMI_TOKEN"
 }
 
-@test "gen_zshenv_creates_real_file" {
+# --- setup_zsh_config tests (Linux: ZDOTDIR via ~/.zshenv) ---
+
+@test "setup_zsh_config_creates_zshenv_on_linux" {
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   # ~/.zshenv must be a real file (not a symlink) — bwrap follows symlinks
@@ -40,7 +42,7 @@ teardown() {
   [ ! -L "$HOME/.zshenv" ]
 }
 
-@test "gen_zshenv_content_is_correct" {
+@test "setup_zsh_config_zshenv_content_on_linux" {
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   local dotfiles
@@ -48,7 +50,7 @@ teardown() {
   grep -qF "export ZDOTDIR=\"$dotfiles\"" "$HOME/.zshenv"
 }
 
-@test "gen_zshenv_overwrites_symlink" {
+@test "setup_zsh_config_overwrites_zshenv_symlink_on_linux" {
   ln -s /tmp/wrong "$HOME/.zshenv"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -56,7 +58,7 @@ teardown() {
   [ ! -L "$HOME/.zshenv" ]
 }
 
-@test "gen_zshenv_skips_real_file" {
+@test "setup_zsh_config_skips_real_zshenv_on_linux" {
   echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -64,7 +66,7 @@ teardown() {
   [[ "$output" == *"SKIP"*".zshenv"* ]]
 }
 
-@test "gen_zshenv_removes_zshrc_symlink" {
+@test "setup_zsh_config_removes_zshrc_symlink_on_linux" {
   ln -s /tmp/old-zshrc "$HOME/.zshrc"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -72,7 +74,7 @@ teardown() {
   [[ "$output" == *"RM"*".zshrc"* ]]
 }
 
-@test "gen_zshenv_preserves_zshrc_real_file" {
+@test "setup_zsh_config_preserves_zshrc_real_file_on_linux" {
   echo "# my zshrc" > "$HOME/.zshrc"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -81,14 +83,32 @@ teardown() {
   grep -q "# my zshrc" "$HOME/.zshrc"
 }
 
-@test "gen_zshenv_removes_zshrc_symlink_even_when_zshenv_skipped" {
+@test "setup_zsh_config_preserves_zshrc_when_zshenv_skipped_on_linux" {
   echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
   ln -s /tmp/old-zshrc "$HOME/.zshrc"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   grep -q "export ZDOTDIR=/custom" "$HOME/.zshenv"
-  [ ! -L "$HOME/.zshrc" ]
-  [[ "$output" == *"RM"*".zshrc"* ]]
+  # .zshenv was skipped (real file exists), so the .zshrc symlink must be kept.
+  # Removing it would leave zsh with no startup config at all.
+  [ -L "$HOME/.zshrc" ]
+  [[ "$output" != *"RM"*".zshrc"* ]]
+}
+
+# --- setup_zsh_config tests (macOS: plain symlink) ---
+
+@test "setup_zsh_config_symlinks_zshrc_on_macos" {
+  uname() { echo "Darwin"; }
+  export -f uname
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  # On macOS, ~/.zshrc is a symlink into the dotfiles repo
+  [ -L "$HOME/.zshrc" ]
+  local dotfiles
+  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
+  [ "$(readlink "$HOME/.zshrc")" = "$dotfiles/.zshrc" ]
+  # No .zshenv should be created on macOS
+  [ ! -e "$HOME/.zshenv" ]
 }
 
 @test "creates_profile_directories" {
@@ -175,7 +195,7 @@ teardown() {
   run bash "$INSTALL_SCRIPT"
   run bash "$INSTALL_SCRIPT"
 
-  # Check ~/.zshenv is still a real file with correct content
+  # On Linux, ~/.zshenv is a real file with correct content
   [ -f "$HOME/.zshenv" ]
   [ ! -L "$HOME/.zshenv" ]
 
