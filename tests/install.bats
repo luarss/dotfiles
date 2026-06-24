@@ -30,36 +30,65 @@ teardown() {
   export XIAOMI_AUTH_TOKEN="$ORIGINAL_XIAOMI_TOKEN"
 }
 
-@test "symlink_creates_new" {
-  # .zshrc doesn't exist, should create symlink
+@test "gen_zshenv_creates_real_file" {
   run bash "$INSTALL_SCRIPT"
-
-  [ -L "$HOME/.zshrc" ]
-  [ "$(readlink "$HOME/.zshrc")" = "$(dirname "$INSTALL_SCRIPT")/.zshrc" ]
+  [ "$status" -eq 0 ]
+  # ~/.zshenv must be a real file (not a symlink) — bwrap follows symlinks
+  # when creating tmpfs bind-mount points, causing ENOENT if the target dir
+  # isn't mounted yet.
+  [ -f "$HOME/.zshenv" ]
+  [ ! -L "$HOME/.zshenv" ]
 }
 
-@test "symlink_updates_existing" {
-  # Create existing symlink to wrong target
-  ln -s /tmp/wrong "$HOME/.zshrc"
-
+@test "gen_zshenv_content_is_correct" {
   run bash "$INSTALL_SCRIPT"
-
-  [ -L "$HOME/.zshrc" ]
-  [ "$(readlink "$HOME/.zshrc")" = "$(dirname "$INSTALL_SCRIPT")/.zshrc" ]
+  [ "$status" -eq 0 ]
+  local dotfiles
+  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
+  grep -qF "export ZDOTDIR=\"$dotfiles\"" "$HOME/.zshenv"
 }
 
-@test "symlink_skips_regular_file" {
-  # Create a regular file (not symlink)
-  touch "$HOME/.zshrc"
-
+@test "gen_zshenv_overwrites_symlink" {
+  ln -s /tmp/wrong "$HOME/.zshenv"
   run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/.zshenv" ]
+  [ ! -L "$HOME/.zshenv" ]
+}
 
-  # Should still be a regular file, not a symlink
+@test "gen_zshenv_skips_real_file" {
+  echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "export ZDOTDIR=/custom" "$HOME/.zshenv"
+  [[ "$output" == *"SKIP"*".zshenv"* ]]
+}
+
+@test "gen_zshenv_removes_zshrc_symlink" {
+  ln -s /tmp/old-zshrc "$HOME/.zshrc"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -L "$HOME/.zshrc" ]
+  [[ "$output" == *"RM"*".zshrc"* ]]
+}
+
+@test "gen_zshenv_preserves_zshrc_real_file" {
+  echo "# my zshrc" > "$HOME/.zshrc"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
   [ -f "$HOME/.zshrc" ]
   [ ! -L "$HOME/.zshrc" ]
+  grep -q "# my zshrc" "$HOME/.zshrc"
+}
 
-  # Should have SKIP message in output
-  [[ "$output" == *"SKIP"*".zshrc"* ]]
+@test "gen_zshenv_removes_zshrc_symlink_even_when_zshenv_skipped" {
+  echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
+  ln -s /tmp/old-zshrc "$HOME/.zshrc"
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "export ZDOTDIR=/custom" "$HOME/.zshenv"
+  [ ! -L "$HOME/.zshrc" ]
+  [[ "$output" == *"RM"*".zshrc"* ]]
 }
 
 @test "creates_profile_directories" {
@@ -146,9 +175,9 @@ teardown() {
   run bash "$INSTALL_SCRIPT"
   run bash "$INSTALL_SCRIPT"
 
-  # Check symlinks still correct
-  [ -L "$HOME/.zshrc" ]
-  [ "$(readlink "$HOME/.zshrc")" = "$(dirname "$INSTALL_SCRIPT")/.zshrc" ]
+  # Check ~/.zshenv is still a real file with correct content
+  [ -f "$HOME/.zshenv" ]
+  [ ! -L "$HOME/.zshenv" ]
 
   # Check settings still correct
   local token
@@ -170,7 +199,7 @@ teardown() {
 @test "outputs_link_messages" {
   run bash "$INSTALL_SCRIPT"
 
-  [[ "$output" == *"LINK"*".zshrc"* ]]
+  [[ "$output" == *"GEN"*".zshenv"* ]]
   [[ "$output" == *"Done."* ]]
 }
 

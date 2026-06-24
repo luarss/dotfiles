@@ -22,6 +22,27 @@ symlink() {
   echo "LINK  $dst -> $src"
 }
 
+# Write a real (non-symlink) ~/.zshenv that sets ZDOTDIR to the dotfiles dir.
+# zsh then loads all config files (.zshrc, .zprofile, etc.) from $ZDOTDIR
+# directly, so no per-file stubs are needed. ~/.zshenv must be a real file
+# (not a symlink) because bwrap follows symlinks when creating bind-mount
+# points in its tmpfs overlay, causing ENOENT if the target dir isn't mounted.
+gen_zshenv() {
+  local dst="$HOME/.zshenv"
+  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+    echo "SKIP  $dst (exists and is not a symlink)"
+  else
+    rm -f "$dst"
+    printf 'export ZDOTDIR="%s"\n' "$DOTFILES" > "$dst"
+    echo "GEN   $dst (ZDOTDIR=$DOTFILES)"
+  fi
+  # ~/.zshrc is superseded by $ZDOTDIR/.zshrc — remove the symlink if present
+  if [ -L "$HOME/.zshrc" ]; then
+    rm "$HOME/.zshrc"
+    echo "RM    $HOME/.zshrc (symlink, superseded by ZDOTDIR)"
+  fi
+}
+
 
 # Generate every profile's settings.json from settings.base.json + providers.json.
 # Each provider entry supplies dir/aliases/token/baseUrl/models + freeform overrides;
@@ -234,7 +255,7 @@ install_node_tools() {
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 
-symlink .zshrc
+gen_zshenv
 symlink .env.example
 
 # Profiles + zsh wrappers — both driven by providers.json (single source of truth)
