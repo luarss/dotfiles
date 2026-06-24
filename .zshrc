@@ -142,9 +142,9 @@ export RTK_TELEMETRY_DISABLED=1
 # generated from providers.json by install.sh into ~/.claude-profiles.zsh.
 [[ -f "$HOME/.claude-profiles.zsh" ]] && source "$HOME/.claude-profiles.zsh"
 
-# zoxide /fzf
-eval "$(zoxide init zsh)"
-[[ "$OSTYPE" == darwin* ]] && source <(fzf --zsh)
+# zoxide / fzf — guard against missing binaries (not yet brew-installed)
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
+[[ "$OSTYPE" == darwin* ]] && command -v fzf &>/dev/null && source <(fzf --zsh)
 
 # gcloud needs Python 3.10+ (macOS system python3 is 3.9)
 [[ "$OSTYPE" == darwin* ]] && export CLOUDSDK_PYTHON=/opt/homebrew/bin/python3.14
