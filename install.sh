@@ -165,8 +165,12 @@ install_routines() {
 
 install_plugin_lock() {
   mkdir -p "$HOME/.claude/plugins"
-  ln -sf "$DOTFILES/installed_plugins.json" "$HOME/.claude/plugins/installed_plugins.json"
-  echo "LINK  $HOME/.claude/plugins/installed_plugins.json -> $DOTFILES/installed_plugins.json"
+  # Copy and expand ~ → $HOME so installPath values are valid absolute paths on
+  # this machine. A symlink would let Claude Code write machine-specific paths
+  # back into the committed file; a copy keeps the repo file as a pinned snapshot.
+  sed "s|~|$HOME|g" "$DOTFILES/installed_plugins.json" \
+    > "$HOME/.claude/plugins/installed_plugins.json"
+  echo "COPY  $HOME/.claude/plugins/installed_plugins.json (paths expanded for $HOME)"
 }
 
 install_hooks() {
