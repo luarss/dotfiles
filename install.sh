@@ -1,7 +1,7 @@
 #!/bin/bash -eu
 # Bootstrap script — symlinks dotfiles into $HOME and generates secret-bearing configs
 
-DOTFILES="$(cd "$(dirname "$0")" && pwd)"
+DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Load tokens from .env if present (override path via DOTFILES_ENV, e.g. for tests)
 ENV_FILE="${DOTFILES_ENV:-$DOTFILES/.env}"
@@ -268,6 +268,10 @@ install_node_tools() {
     echo "LINK  $HOME/.local/bin/$(basename "$bin") -> $bin"
   done
 }
+
+# When sourced (e.g. by tests that want a single function), stop here so only
+# the function definitions above load and none of the install steps below run.
+[ "${BASH_SOURCE[0]}" != "${0}" ] && return 0
 
 # Work-machine detection — gates routine restore and the personal sonnet switch.
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.

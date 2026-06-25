@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Install bats
         run: sudo apt-get install -y bats
@@ -21,3 +21,17 @@ jobs:
 
       - name: Run bats tests
         run: bats tests/
+
+  # Runs in parallel with `bats`. The shell-resolve integration test sources the
+  # real .zshrc in zsh, so it needs zsh installed (it self-skips otherwise).
+  shell-resolve:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install bats, jq, zsh
+        run: sudo apt-get install -y bats jq zsh
+
+      - name: Run shell-resolve integration test
+        run: bats tests/shell-resolve.bats
