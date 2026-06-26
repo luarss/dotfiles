@@ -45,7 +45,6 @@
       "Read(**/secrets.json)",
       "Read(**/secrets.yaml)",
       "Read(**/secrets.yml)",
-      "Read(**/*.pem)",
       "Read(**/*.key)",
       "Read(~/.my.cnf)",
       "Read(**/.my.cnf)",
