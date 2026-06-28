@@ -33,6 +33,8 @@ teardown() {
 # --- setup_zsh_config tests (Linux: ZDOTDIR via ~/.zshenv) ---
 
 @test "setup_zsh_config_creates_zshenv_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   # ~/.zshenv must be a real file (not a symlink) — bwrap follows symlinks
@@ -43,6 +45,8 @@ teardown() {
 }
 
 @test "setup_zsh_config_zshenv_content_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   local dotfiles
@@ -51,6 +55,8 @@ teardown() {
 }
 
 @test "setup_zsh_config_overwrites_zshenv_symlink_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   ln -s /tmp/wrong "$HOME/.zshenv"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -59,6 +65,8 @@ teardown() {
 }
 
 @test "setup_zsh_config_skips_real_zshenv_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -67,6 +75,8 @@ teardown() {
 }
 
 @test "setup_zsh_config_removes_zshrc_symlink_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   ln -s /tmp/old-zshrc "$HOME/.zshrc"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -75,6 +85,8 @@ teardown() {
 }
 
 @test "setup_zsh_config_preserves_zshrc_real_file_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   echo "# my zshrc" > "$HOME/.zshrc"
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -84,6 +96,8 @@ teardown() {
 }
 
 @test "setup_zsh_config_preserves_zshrc_when_zshenv_skipped_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
   echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
   ln -s /tmp/old-zshrc "$HOME/.zshrc"
   run bash "$INSTALL_SCRIPT"
@@ -188,6 +202,8 @@ teardown() {
 }
 
 @test "idempotent" {
+  uname() { echo "Linux"; }
+  export -f uname
   export DEEPSEEK_AUTH_TOKEN="same-token"
   export XIAOMI_AUTH_TOKEN="same-xiaomi-token"
 
