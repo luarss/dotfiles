@@ -8,7 +8,7 @@ base_url=$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$config_dir/settings.json" 
 
 hour=$((10#$(date -u +%H)))
 
-if (( hour >= 1 && hour < 4 )) || (( hour >= 6 && hour < 16 )); then
+if (( hour >= 1 && hour < 4 )) || (( hour >= 6 && hour < 10 )); then
     now=$(date -u +%H:%M)
     printf 'DeepSeek peak-hour surcharge in effect (01:00–04:00 UTC and 06:00–10:00 UTC). Current UTC: %s. Use another profile or try later.\n' "$now" >&2
     exit 2
