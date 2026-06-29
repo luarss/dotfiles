@@ -1,2 +1,9 @@
 .env
 tools/node_modules/
+
+.zcompdump-Shuis-Laptop-5.9
+.zcompdump-Shuis-Laptop-5.9.zwc
+.zsh_history
+.zsh_sessions/
+.swp
+
