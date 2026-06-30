@@ -4,6 +4,8 @@
 # Strategy: stub `date` via PATH prepending so tests can control the apparent
 # UTC hour without waiting for a real clock. STUB_HOUR (0-23) drives the stub;
 # defaults to 12 (off-peak) so tests that don't set it pass through freely.
+# STUB_DATE (YYYYMMDD) drives the activation-date gate; defaults to 20260713
+# (the activation date) so hour-focused tests exercise the blocking path.
 
 HOOK="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks/deepseek-peak-hours-guard.sh"
 DEEPSEEK_URL="https://api.deepseek.com/anthropic"
@@ -18,9 +20,10 @@ setup() {
 hour="${STUB_HOUR:-12}"
 args="$*"
 case "$args" in
-  *+%H)    printf '%02d\n' "$hour" ;;
-  *+%H:%M) printf '%02d:00\n' "$hour" ;;
-  *)       exec /bin/date "$@" ;;
+  *+%Y%m%d) printf '%s\n' "${STUB_DATE:-20260713}" ;;
+  *+%H)     printf '%02d\n' "$hour" ;;
+  *+%H:%M)  printf '%02d:00\n' "$hour" ;;
+  *)        exec /bin/date "$@" ;;
 esac
 EOF
   chmod +x "$DATE_STUB"
@@ -56,6 +59,41 @@ run_hook() {
 @test "no-op when ANTHROPIC_BASE_URL is Mimo (third-party, non-DeepSeek)" {
   export ANTHROPIC_BASE_URL="https://api.xiaomimimo.com/anthropic"
   export STUB_HOUR=15
+  run_hook
+  [ "$status" -eq 0 ]
+}
+
+# ─── activation-date gate (no-op before 2026-07-13 UTC) ──────────────────────
+
+@test "no-op before activation date even during a peak hour" {
+  export ANTHROPIC_BASE_URL="$DEEPSEEK_URL"
+  export STUB_HOUR=2
+  export STUB_DATE=20260712   # day before activation
+  run_hook
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "blocks on the activation date during a peak hour" {
+  export ANTHROPIC_BASE_URL="$DEEPSEEK_URL"
+  export STUB_HOUR=2
+  export STUB_DATE=20260713   # activation date
+  run_hook
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks after the activation date during a peak hour" {
+  export ANTHROPIC_BASE_URL="$DEEPSEEK_URL"
+  export STUB_HOUR=2
+  export STUB_DATE=20260801
+  run_hook
+  [ "$status" -eq 2 ]
+}
+
+@test "no-op before activation date during an off-peak hour" {
+  export ANTHROPIC_BASE_URL="$DEEPSEEK_URL"
+  export STUB_HOUR=12
+  export STUB_DATE=20260101
   run_hook
   [ "$status" -eq 0 ]
 }

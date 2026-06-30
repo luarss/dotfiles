@@ -9,6 +9,10 @@ if [[ -z "$base_url" ]]; then
 fi
 [[ "$base_url" == *"deepseek"* ]] || exit 0
 
+# Guard only takes effect from 2026-07-13 (UTC) onward; no-op before then.
+today=$((10#$(date -u +%Y%m%d)))
+(( today >= 20260713 )) || exit 0
+
 hour=$((10#$(date -u +%H)))
 
 if (( hour >= 1 && hour < 4 )) || (( hour >= 14 && hour < 18 )); then
