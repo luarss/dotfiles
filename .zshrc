@@ -151,3 +151,12 @@ command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
 
 # gcloud needs Python 3.10+ (macOS system python3 is 3.9)
 [[ "$OSTYPE" == darwin* ]] && export CLOUDSDK_PYTHON=/opt/homebrew/bin/python3.14
+
+# ------ gcloud account dispatcher ------
+# gcloud  -> nusx.edu.sg GCP (default)
+# s-gcloud -> a5x.ai GCP
+gcloud_with_config() {
+  CLOUDSDK_CONFIG="$1" command gcloud "${@:2}"
+}
+gcloud()  { gcloud_with_config "$HOME/.config/gcloud-nusx" "$@"; }
+s-gcloud() { gcloud_with_config "$HOME/.config/gcloud-a5x"  "$@"; }
