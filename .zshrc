@@ -153,10 +153,7 @@ command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
 [[ "$OSTYPE" == darwin* ]] && export CLOUDSDK_PYTHON=/opt/homebrew/bin/python3.14
 
 # ------ gcloud account dispatcher ------
-# gcloud  -> nusx.edu.sg GCP (default)
-# s-gcloud -> a5x.ai GCP
-gcloud_with_config() {
-  CLOUDSDK_CONFIG="$1" command gcloud "${@:2}"
-}
-gcloud()  { gcloud_with_config "$HOME/.config/gcloud-nusx" "$@"; }
-s-gcloud() { gcloud_with_config "$HOME/.config/gcloud-a5x"  "$@"; }
+# gcloud   -> nusx.edu.sg GCP (default): uses the STANDARD ~/.config/gcloud so
+#             terraform and other ADC consumers pick it up without CLOUDSDK_CONFIG.
+# s-gcloud -> a5x.ai GCP: isolated in its own config dir.
+s-gcloud() { CLOUDSDK_CONFIG="$HOME/.config/gcloud-a5x" command gcloud "$@"; }
