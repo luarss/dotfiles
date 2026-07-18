@@ -66,6 +66,8 @@ export SNYK_TOKEN="..."             # work laptop only — skill-scan-guard's ag
 
 The script runs on macOS only (it no-ops on Linux). It symlinks dotfiles into `$HOME`, generates each profile's `settings.json` and the zsh wrappers from `providers.json`, and configures git to use `.githooks/` via `core.hooksPath`. It also symlinks each profile's `AGENTS.md`. `CLAUDE.md` is symlinked, except for profiles with `RTK.md` where it is generated (with `@RTK.md` appended) — re-run install after editing `.claude/CLAUDE.md`.
 
+To clean up artifacts an older (pre-no-op) `install.sh` left on a Linux box, run `scripts/reset-linux.sh` there (dry run by default; `-f` to remove). It deletes only the repo-owned ZDOTDIR `~/.zshenv`, the generated `settings.json`/plugin lock/zsh wrappers, the `.claude-second-profile`/`.claude-third-profile` dirs, and repo symlinks — never your real `~/.claude` data.
+
 ## Git Hooks
 
 - `post-checkout` — Copies `.env` from main worktree to new worktrees (for `git worktree add`)
