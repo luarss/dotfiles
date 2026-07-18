@@ -2,11 +2,12 @@
 # Tests for install.sh bootstrap script
 #
 # install.sh is primarily a macOS/zsh setup. On Linux (e.g. the bwrap sandbox
-# used by remote/orchestrated sessions) it skips the zsh/ZDOTDIR/multi-profile
-# machinery but still installs the Claude Code default profile: settings.json,
-# hooks, skills, commands. CI runs on Linux, so the default (unmocked) case
-# exercises that scoped path. The one macOS test below mocks `uname` to Darwin
-# to cover the full install path (all profiles + zsh wrapper).
+# used by remote/orchestrated sessions) it skips the multi-profile machinery
+# (no zsh wrapper there to reach a second/third profile) but still installs
+# ~/.zshrc plus the Claude Code default profile: settings.json, hooks, skills,
+# commands. CI runs on Linux, so the default (unmocked) case exercises that
+# scoped path. The one macOS test below mocks `uname` to Darwin to cover the
+# full install path (all profiles + zsh wrapper).
 
 setup() {
   # Create a temporary home directory for each test
@@ -56,9 +57,12 @@ teardown() {
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
 
-  # No zsh config — zsh/ZDOTDIR stays macOS-only
+  # ~/.zshrc IS installed on Linux (as a real file, not a symlink — see
+  # setup_zsh_config_writes_real_zshrc_file_on_linux for why), but the
+  # multi-profile wrapper stays macOS-only (no zsh `cl` dispatcher to reach it)
   [ ! -e "$HOME/.zshenv" ]
-  [ ! -e "$HOME/.zshrc" ]
+  [ -e "$HOME/.zshrc" ]
+  [ ! -L "$HOME/.zshrc" ]
   [ ! -e "$HOME/.claude-profiles.zsh" ]
 
   # Default Claude profile IS installed
@@ -108,6 +112,44 @@ teardown() {
   [ ! -L "$HOME/.zshrc" ]
   grep -q "export ZDOTDIR=/custom" "$HOME/.zshenv"
   [ ! -L "$HOME/.zshenv" ]
+}
+
+@test "setup_zsh_config_writes_real_zshrc_file_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # A real file, NOT a symlink: bwrap (the sandbox this path targets) follows
+  # symlinks when precomputing tmpfs bind-mount points, so a symlink whose
+  # target isn't already in that list fails with ENOENT. A real file with a
+  # source line only needs bwrap to resolve two concrete paths.
+  [ -f "$HOME/.zshrc" ]
+  [ ! -L "$HOME/.zshrc" ]
+  local dotfiles
+  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
+  grep -qF "source \"$dotfiles/.zshrc\"" "$HOME/.zshrc"
+
+  # Re-running install.sh regenerates the same source-file, rather than
+  # getting skipped as a foreign file (idempotent re-install)
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -L "$HOME/.zshrc" ]
+  grep -qF "source \"$dotfiles/.zshrc\"" "$HOME/.zshrc"
+}
+
+@test "setup_zsh_config_excludes_rtk_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # RTK.md/rtk are Homebrew/macOS-only — they must stay out of the Linux path
+  # even though ~/.zshrc itself is now installed there
+  [ ! -e "$HOME/.claude/RTK.md" ]
+  [[ "$(cat "$HOME/.claude/CLAUDE.md" 2>/dev/null)" != *RTK.md* ]]
 }
 
 # --- macOS: real install path (uname mocked to Darwin) ---

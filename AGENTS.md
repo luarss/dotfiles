@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap script. **macOS only** — `install.sh` no-ops on Linux (it exits early with a skip message and touches nothing in `$HOME`), since the multi-profile Claude/zsh setup targets the dev laptop, not the bwrap sandbox used by remote/orchestrated sessions.
+Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap script. **Primarily macOS** — the multi-profile Claude/zsh setup (second/third profiles, the `cl` dispatcher) targets the dev laptop and stays Darwin-only. On Linux (e.g. the bwrap sandbox used by remote/orchestrated sessions) `install.sh` installs a scoped subset instead: `~/.zshrc` (see N-Claude Profile System note below) and the default Claude Code profile (`settings.json`, hooks, skills, commands) — everything else (other profiles, plugin lock, work-only routines) is skipped.
 
 ## Structure
 
@@ -40,7 +40,7 @@ cl --list        # list available providers
 The default `claude` profile (`.claude`) has [rtk](https://github.com/rtk-ai/rtk) wired in for token-saving command rewrites. `rtk` itself is installed via the `Brewfile` (`brew "rtk"`). It lives **only** in the default profile, so the third-party profiles (`s-claude`, `d-claude`) stay untouched:
 
 - Its `overrides.hooks.PreToolUse` re-declares the shared guards (`remote-command-guard.sh`, `db-guard.sh`, `db-rate-limit.sh`) **plus** the work-laptop `skill-scan-guard.sh` (see Security) **plus** `.claude/hooks/rtk-hook.sh`, which wraps `rtk hook claude` and transparently rewrites Bash commands (`git status` → `rtk git status`). The rtk hook is listed **last** so the security guards inspect the original command first. (The `mcp__.*mysql.*` matcher carrying `db-rate-limit.sh` is re-declared here too.) The wrapper no-ops on non-Darwin so Linux machines aren't broken by a missing `rtk` binary.
-- `.claude/RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` (macOS only) symlinks it and generates `~/.claude/CLAUDE.md` with `@RTK.md` included. Since install no-ops on Linux, rtk context never loads there.
+- `.claude/RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` symlinks it and generates `~/.claude/CLAUDE.md` with `@RTK.md` included, gated to Darwin in `generate_profiles` (see Install). On Linux neither happens, so rtk context never loads there.
 - **Telemetry is disabled** two ways: `overrides.env.RTK_TELEMETRY_DISABLED=1` in `providers.json` (covers the in-Claude hook), and `export RTK_TELEMETRY_DISABLED=1` in `.zshrc` (covers manual `rtk` use in the shell). rtk telemetry is also off by default / opt-in, so this just makes the opt-out explicit and reproducible.
 
 After install, **restart Claude Code** for the hook to take effect.
@@ -64,9 +64,11 @@ export SNYK_TOKEN="..."             # work laptop only — skill-scan-guard's ag
 ./install.sh
 ```
 
-The script runs on macOS only (it no-ops on Linux). It symlinks dotfiles into `$HOME`, generates each profile's `settings.json` and the zsh wrappers from `providers.json`, and configures git to use `.githooks/` via `core.hooksPath`. It also symlinks each profile's `AGENTS.md`. `CLAUDE.md` is symlinked, except for profiles with `RTK.md` where it is generated (with `@RTK.md` appended) — re-run install after editing `.claude/CLAUDE.md`.
+On macOS the script symlinks dotfiles into `$HOME`, generates every profile's `settings.json` and the zsh wrappers from `providers.json`, and configures git to use `.githooks/` via `core.hooksPath`. It also symlinks each profile's `AGENTS.md`. `CLAUDE.md` is symlinked, except for profiles with `RTK.md` where it is generated (with `@RTK.md` appended) — re-run install after editing `.claude/CLAUDE.md`. On Linux it installs only the default profile's settings/hooks/skills/commands, plus `~/.zshrc`.
 
-To clean up artifacts an older (pre-no-op) `install.sh` left on a Linux box, run `scripts/reset-linux.sh` there (dry run by default; `-f` to remove). It deletes only the repo-owned ZDOTDIR `~/.zshenv`, the generated `settings.json`/plugin lock/zsh wrappers, the `.claude-second-profile`/`.claude-third-profile` dirs, and repo symlinks — never your real `~/.claude` data.
+`~/.zshrc` itself is installed differently per OS (`setup_zsh_config` in `install.sh`): on macOS it's a plain symlink (edits are live); on Linux it's a real file containing `source "$DOTFILES/.zshrc"`, deliberately **not** a symlink — bwrap (the sandbox this path targets) follows symlinks when precomputing its tmpfs bind-mount points, so a symlink to an unmounted target fails with ENOENT, while a real file only needs bwrap to resolve two concrete paths. RTK.md/rtk stay Darwin-only regardless, since rtk is a Homebrew-only binary and `.zshrc` has no rtk-specific content.
+
+To clean up artifacts an older (pre-scoped) `install.sh` left on a Linux box, run `scripts/reset-linux.sh` there (dry run by default; `-f` to remove). It deletes only the repo-owned ZDOTDIR `~/.zshenv`, the generated `settings.json`/plugin lock/zsh wrappers, the `.claude-second-profile`/`.claude-third-profile` dirs, and repo symlinks — never your real `~/.claude` data or the current `~/.zshrc` source-file.
 
 ## Git Hooks
 

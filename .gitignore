@@ -6,4 +6,4 @@ tools/node_modules/
 .zsh_history
 .zsh_sessions/
 .swp
-
+.zcompdump*

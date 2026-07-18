@@ -22,11 +22,34 @@ symlink() {
   echo "LINK  $dst -> $src"
 }
 
-# macOS/Darwin only: plain symlink for ~/.zshrc so edits to the repo file are
-# live immediately. This whole script no-ops on Linux (see the guard at the top
-# of the main section), so there is no Linux/bwrap branch here anymore.
+# On macOS: plain ~/.zshrc symlink, so edits to the repo file are live
+# immediately (no bwrap, so no symlink-resolution risk).
+#
+# On Linux (e.g. the bwrap sandbox for remote/orchestrated sessions): a REAL
+# ~/.zshrc containing a `source "$DOTFILES/.zshrc"` line, NOT a symlink.
+# bwrap follows symlinks when precomputing its tmpfs bind-mount points, so a
+# symlink whose target isn't already in that list fails with ENOENT — the
+# same failure mode the old ZDOTDIR-based ~/.zshenv (see git history) was
+# built to avoid. A real file with a source line sidesteps it: bwrap only
+# needs to resolve the two concrete paths involved (~/.zshrc itself and
+# $DOTFILES/.zshrc), not walk a symlink to a directory that may not be
+# mounted yet. RTK.md and the rtk hook stay Darwin-only regardless (see
+# generate_profiles / providers.json) since rtk itself is a Homebrew-only
+# binary — .zshrc has no rtk-specific content to begin with.
 setup_zsh_config() {
-  symlink .zshrc
+  if [ "$(uname)" = "Linux" ]; then
+    local dst="$HOME/.zshrc"
+    local marker="source \"$DOTFILES/.zshrc\""
+    if [ -e "$dst" ] && [ ! -L "$dst" ] && ! grep -qF "$marker" "$dst" 2>/dev/null; then
+      echo "SKIP  $dst (exists and is not a symlink)"
+      return
+    fi
+    [ -L "$dst" ] && rm -f "$dst"
+    printf '%s\n' "$marker" > "$dst"
+    echo "GEN   $dst ($marker)"
+  else
+    symlink .zshrc
+  fi
 }
 
 
@@ -258,12 +281,12 @@ install_node_tools() {
 [ "${BASH_SOURCE[0]}" != "${0}" ] && return 0
 
 # These are primarily macOS/zsh dotfiles. On Linux (e.g. the bwrap sandbox used
-# by remote/orchestrated sessions) the zsh/ZDOTDIR/multi-profile machinery still
-# doesn't apply — there's no zsh wrapper there to reach a second or third
-# profile — but the Claude Code side (default-profile settings.json, hooks,
-# skills, commands) is still wanted, so that subset installs there too, straight
-# into the real ~/.claude. reset-linux.sh is the matching undo for exactly this
-# subset.
+# by remote/orchestrated sessions) the multi-profile machinery still doesn't
+# apply — there's no zsh wrapper there to reach a second or third profile — but
+# ~/.zshrc (see setup_zsh_config) and the Claude Code side (default-profile
+# settings.json, hooks, skills, commands) are both wanted, so that subset
+# installs there too, straight into the real ~/.claude. reset-linux.sh is
+# the matching undo for exactly this subset.
 IS_DARWIN=0
 [ "$(uname)" = "Darwin" ] && IS_DARWIN=1
 
@@ -271,9 +294,7 @@ IS_DARWIN=0
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 
-if [ "$IS_DARWIN" = 1 ]; then
-  setup_zsh_config
-fi
+setup_zsh_config
 symlink .env.example
 
 # Profiles + zsh wrappers — both driven by providers.json (single source of truth).

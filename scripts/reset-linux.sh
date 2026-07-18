@@ -56,10 +56,20 @@ for d in "$HOME/.claude-second-profile" "$HOME/.claude-third-profile"; do
   [ -e "$d" ] && dirs+=("$d")
 done
 
-# The ZDOTDIR pointer — only if it actually points at this repo.
+# The ZDOTDIR pointer — only if it actually points at this repo. (Legacy: an
+# older install.sh generated ~/.zshenv with ZDOTDIR; the current one writes
+# ~/.zshrc directly instead — see zshrc_source below.)
 zshenv=""
 if [ -f "$HOME/.zshenv" ] && grep -q "ZDOTDIR=\"$DOTFILES\"" "$HOME/.zshenv" 2>/dev/null; then
   zshenv="$HOME/.zshenv"
+fi
+
+# ~/.zshrc — only if it's the real file install.sh generates on Linux (a
+# `source "$DOTFILES/.zshrc"` line, not a symlink). A hand-written ~/.zshrc
+# is left alone.
+zshrc_source=""
+if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ] && grep -qF "source \"$DOTFILES/.zshrc\"" "$HOME/.zshrc" 2>/dev/null; then
+  zshrc_source="$HOME/.zshrc"
 fi
 
 # Report
@@ -71,7 +81,8 @@ print_group() {
   echo "$label"
   printf '  %s\n' "$@"
 }
-print_group "ZDOTDIR pointer (repo-owned):" ${zshenv:+"$zshenv"}
+print_group "ZDOTDIR pointer (repo-owned, legacy):" ${zshenv:+"$zshenv"}
+print_group "~/.zshrc source-file (repo-owned):" ${zshrc_source:+"$zshrc_source"}
 print_group "repo symlinks:" "${symlinks[@]:-}"
 print_group "generated files:" "${files[@]:-}"
 print_group "generated profile dirs:" "${dirs[@]:-}"
@@ -89,6 +100,7 @@ fi
 
 # Remove
 [ -n "$zshenv" ] && rm -f "$zshenv" && echo "RM    $zshenv"
+[ -n "$zshrc_source" ] && rm -f "$zshrc_source" && echo "RM    $zshrc_source"
 for l in "${symlinks[@]:-}"; do [ -n "$l" ] && rm -f "$l" && echo "RM    $l"; done
 for f in "${files[@]:-}"; do [ -n "$f" ] && rm -f "$f" && echo "RM    $f"; done
 for d in "${dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d" && echo "RM    $d"; done
@@ -97,5 +109,5 @@ echo "Done."
 echo
 echo "Note: git core.hooksPath may still be set in this clone. To revert:"
 echo "  git -C \"$DOTFILES\" config --unset core.hooksPath"
-echo "Note: zsh will fall back to your own ~/.zshrc/~/.zshenv now. To keep the"
-echo "repo's zsh config on Linux, add to your ~/.zshrc:  source \"$DOTFILES/.zshrc\""
+echo "Note: zsh will fall back to your own ~/.zshrc now. Re-run ./install.sh"
+echo "to restore the repo's zsh config on Linux."
