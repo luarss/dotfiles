@@ -10,7 +10,7 @@
 # Gating — WORK LAPTOP ONLY. If `hostname -s` != $DOTFILES_WORK_HOSTNAME
 # (default Shuis-MacBook-Air) the guard no-ops immediately, so personal
 # machines never scan and never need SNYK_TOKEN. Same hostname switch the
-# routine restore + sonnet switch in install.sh use.
+# sonnet switch in install.sh uses.
 #
 # Scope: fires on plugin/skill INSTALL commands run through Bash:
 #   - `claude plugin install <target>`

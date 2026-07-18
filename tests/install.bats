@@ -71,10 +71,9 @@ teardown() {
   [ -d "$HOME/.claude/hooks" ]
   [ -L "$HOME/.claude/hooks/db-guard.sh" ]
 
-  # ...but not the macOS-only extras: other profiles, plugin lock, work-only routines
+  # ...but not the macOS-only extras: other profiles, plugin lock
   [ ! -d "$HOME/.claude-second-profile" ]
   [ ! -d "$HOME/.claude-third-profile" ]
-  [ ! -e "$HOME/.claude/scheduled-tasks" ]
   [ ! -e "$HOME/.claude/plugins/installed_plugins.json" ]
 }
 

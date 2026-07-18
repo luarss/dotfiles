@@ -146,44 +146,6 @@ install_skills() {
   done
 }
 
-# Routines (scheduled cloud agents) are work-specific: restore them only on the
-# work machine so personal laptops never pick up work schedules. Same semantics
-# as install_skills — real dirs are left alone, symlinks are created/repaired.
-install_routines() {
-  local routines_src="$DOTFILES/routines"
-  local routines_dst="$HOME/.claude/scheduled-tasks"
-  [ -d "$routines_src" ] || return 0
-  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
-    echo "SKIP  routines (non-work machine)"
-    return 0
-  fi
-  mkdir -p "$routines_dst"
-  # Prune symlinks pointing into routines/ whose source dir is gone
-  # (routine was deleted server-side and removed by /sync-routines)
-  for link in "$routines_dst"/*; do
-    [ -L "$link" ] || continue
-    case "$(readlink "$link")" in
-      "$routines_src"/*)
-        if [ ! -e "$link" ]; then
-          rm "$link"
-          echo "PRUNE $link"
-        fi
-        ;;
-    esac
-  done
-  for routine_dir in "$routines_src"/*/; do
-    local name dst
-    name="$(basename "$routine_dir")"
-    dst="$routines_dst/$name"
-    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-      echo "SKIP  $dst (exists and is not a symlink)"
-      continue
-    fi
-    ln -sfn "$routine_dir" "$dst"
-    echo "LINK  $dst -> $routine_dir"
-  done
-}
-
 install_plugin_lock() {
   mkdir -p "$HOME/.claude/plugins"
   # Copy and expand ~ → $HOME so installPath values are valid absolute paths on
@@ -290,7 +252,7 @@ install_node_tools() {
 IS_DARWIN=0
 [ "$(uname)" = "Darwin" ] && IS_DARWIN=1
 
-# Work-machine detection — gates routine restore and the personal sonnet switch.
+# Work-machine detection — gates the skill-scan guard and the personal sonnet switch.
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 
@@ -316,10 +278,6 @@ install_skills
 
 # Install hooks into ~/.claude/hooks (per-file symlinks, idempotent)
 install_hooks
-
-# Restore routines into ~/.claude/scheduled-tasks (work machine only; self-gates
-# on hostname, so this is a no-op on every non-work box regardless of OS)
-install_routines
 
 # Install shared slash commands into each profile's commands/ dir
 install_commands
