@@ -1,9 +1,12 @@
 #!/usr/bin/env bats
 # Tests for install.sh bootstrap script
 #
-# install.sh is a macOS/zsh setup and no-ops entirely on Linux. CI runs on
-# Linux, so the default (unmocked) case exercises the Linux skip path. The one
-# macOS test below mocks `uname` to Darwin to cover the real install path.
+# install.sh is primarily a macOS/zsh setup. On Linux (e.g. the bwrap sandbox
+# used by remote/orchestrated sessions) it skips the zsh/ZDOTDIR/multi-profile
+# machinery but still installs the Claude Code default profile: settings.json,
+# hooks, skills, commands. CI runs on Linux, so the default (unmocked) case
+# exercises that scoped path. The one macOS test below mocks `uname` to Darwin
+# to cover the full install path (all profiles + zsh wrapper).
 
 setup() {
   # Create a temporary home directory for each test
@@ -34,39 +37,60 @@ teardown() {
   export XIAOMI_AUTH_TOKEN="$ORIGINAL_XIAOMI_TOKEN"
 }
 
-# --- Linux: install is a full no-op ---
+# --- Linux: scoped install (default profile only, no zsh/ZDOTDIR) ---
 
-@test "install_no_ops_on_linux" {
+@test "install_completes_on_linux" {
   uname() { echo "Linux"; }
   export -f uname
 
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  install (Linux is not a supported target"* ]]
-  # "Done." only prints at the end of a real install; the skip returns before it
-  [[ "$output" != *"Done."* ]]
+  [[ "$output" == *"GEN   $HOME/.claude/settings.json (default)"* ]]
+  [[ "$output" == *"Done."* ]]
 }
 
-@test "install_writes_nothing_to_home_on_linux" {
+@test "install_writes_only_default_profile_on_linux" {
   uname() { echo "Linux"; }
   export -f uname
 
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
 
-  # No zsh config
+  # No zsh config — zsh/ZDOTDIR stays macOS-only
   [ ! -e "$HOME/.zshenv" ]
   [ ! -e "$HOME/.zshrc" ]
   [ ! -e "$HOME/.claude-profiles.zsh" ]
 
-  # No Claude profiles / settings / skills / hooks
-  [ ! -e "$HOME/.claude/settings.json" ]
-  [ ! -e "$HOME/.claude/skills" ]
-  [ ! -e "$HOME/.claude/hooks" ]
-  [ ! -e "$HOME/.claude/scheduled-tasks" ]
-  [ ! -e "$HOME/.claude/plugins/installed_plugins.json" ]
+  # Default Claude profile IS installed
+  [ -e "$HOME/.claude/settings.json" ]
+  [ -d "$HOME/.claude/skills" ]
+  [ -d "$HOME/.claude/hooks" ]
+  [ -L "$HOME/.claude/hooks/db-guard.sh" ]
+
+  # ...but not the macOS-only extras: other profiles, plugin lock, work-only routines
   [ ! -d "$HOME/.claude-second-profile" ]
   [ ! -d "$HOME/.claude-third-profile" ]
+  [ ! -e "$HOME/.claude/scheduled-tasks" ]
+  [ ! -e "$HOME/.claude/plugins/installed_plugins.json" ]
+}
+
+@test "install_default_profile_settings_on_linux_has_hooks_and_sonnet" {
+  uname() { echo "Linux"; }
+  export -f uname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # Personal (non-work) machine: model forced to sonnet regardless of OS
+  [ "$(jq -r '.model' "$HOME/.claude/settings.json")" = "sonnet" ]
+
+  # The 5-hook PreToolUse chain + symlink-memory PostToolUse are present...
+  [ "$(jq '[.hooks.PreToolUse[].hooks[].command] | length' "$HOME/.claude/settings.json")" -eq 6 ]
+  [ "$(jq '.hooks.PostToolUse[0].hooks[0].command' "$HOME/.claude/settings.json")" = '"bash ~/.claude/hooks/symlink-memory.sh"' ]
+
+  # ...but the deepseek-only guard must NOT be wired into the default profile
+  # (it belongs solely to the deepseek provider's overrides — see providers.json)
+  [ "$(jq -r '.hooks | has("UserPromptSubmit")' "$HOME/.claude/settings.json")" = "false" ]
 }
 
 @test "install_leaves_existing_home_files_untouched_on_linux" {

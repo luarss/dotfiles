@@ -33,11 +33,15 @@ setup_zsh_config() {
 # Generate every profile's settings.json from settings.base.json + providers.json.
 # Each provider entry supplies dir/aliases/token/baseUrl/models + freeform overrides;
 # gen-settings.jq layers them onto the shared base. Adding a provider = one manifest entry.
+# Optional $1 restricts generation to a single provider name (used on Linux, which
+# only gets the default profile — no zsh wrapper exists there to reach the others).
 generate_profiles() {
+  local only="${1:-}"
   local manifest="$DOTFILES/providers.json"
   local base; base="$(cat "$DOTFILES/settings.base.json")"
   local name
   for name in $(jq -r 'keys[]' "$manifest"); do
+    [ -n "$only" ] && [ "$name" != "$only" ] && continue
     local dir token_var token pentry
     dir="$(jq -r --arg n "$name" '.[$n].dir' "$manifest")"
     token_var="$(jq -r --arg n "$name" '.[$n].token // empty' "$manifest")"
@@ -253,29 +257,38 @@ install_node_tools() {
 # the function definitions above load and none of the install steps below run.
 [ "${BASH_SOURCE[0]}" != "${0}" ] && return 0
 
-# These are macOS/zsh dotfiles. On Linux (e.g. the bwrap sandbox used by
-# remote/orchestrated sessions) there is nothing to install — no-op with a
-# message so nothing lands in $HOME and no git config is touched.
-if [ "$(uname)" = "Linux" ]; then
-  echo "SKIP  install (Linux is not a supported target for these dotfiles)"
-  exit 0
-fi
+# These are primarily macOS/zsh dotfiles. On Linux (e.g. the bwrap sandbox used
+# by remote/orchestrated sessions) the zsh/ZDOTDIR/multi-profile machinery still
+# doesn't apply — there's no zsh wrapper there to reach a second or third
+# profile — but the Claude Code side (default-profile settings.json, hooks,
+# skills, commands) is still wanted, so that subset installs there too, straight
+# into the real ~/.claude. reset-linux.sh is the matching undo for exactly this
+# subset.
+IS_DARWIN=0
+[ "$(uname)" = "Darwin" ] && IS_DARWIN=1
 
 # Work-machine detection — gates routine restore and the personal sonnet switch.
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 
-setup_zsh_config
+if [ "$IS_DARWIN" = 1 ]; then
+  setup_zsh_config
+fi
 symlink .env.example
 
-# Profiles + zsh wrappers — both driven by providers.json (single source of truth)
-generate_profiles
-generate_zsh_profiles
-
-# Profile directories — used by install_commands to fan out shared commands
-_claude_profiles=()
-while IFS= read -r _dir; do _claude_profiles+=("$_dir"); done \
-  < <(jq -r '.[].dir' "$DOTFILES/providers.json")
+# Profiles + zsh wrappers — both driven by providers.json (single source of truth).
+# Linux only ever gets the "default" profile (see comment above).
+if [ "$IS_DARWIN" = 1 ]; then
+  generate_profiles
+  generate_zsh_profiles
+  # Profile directories — used by install_commands to fan out shared commands
+  _claude_profiles=()
+  while IFS= read -r _dir; do _claude_profiles+=("$_dir"); done \
+    < <(jq -r '.[].dir' "$DOTFILES/providers.json")
+else
+  generate_profiles default
+  _claude_profiles=(".claude")
+fi
 
 # Install skills into ~/.claude/skills (append-only)
 install_skills
@@ -283,24 +296,29 @@ install_skills
 # Install hooks into ~/.claude/hooks (per-file symlinks, idempotent)
 install_hooks
 
-# Restore routines into ~/.claude/scheduled-tasks (work machine only)
+# Restore routines into ~/.claude/scheduled-tasks (work machine only; self-gates
+# on hostname, so this is a no-op on every non-work box regardless of OS)
 install_routines
-
-# Symlink plugin lock so installed SHAs are pinned across machines
-install_plugin_lock
 
 # Install shared slash commands into each profile's commands/ dir
 install_commands
 
-git -C "$DOTFILES" config core.hooksPath .githooks
-echo "HOOK  core.hooksPath -> .githooks"
+if [ "$IS_DARWIN" = 1 ]; then
+  # Symlink plugin lock so installed SHAs are pinned across machines. Skipped on
+  # Linux: the pinned versions/paths are macOS-cache-specific and installing
+  # plugins there is a separate, heavier step than this settings/hooks parity fix.
+  install_plugin_lock
 
-# Install custom zsh plugins (requires Oh My Zsh to be installed first)
-install_zsh_plugin "zsh-users/zsh-autosuggestions" "" "v0.7.1" "e52ee8ca55bcc56a17c828767a3f98f22a68d4eb"
-install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6aafd24e5acb5b2e17e4dd5dddf3e"
+  git -C "$DOTFILES" config core.hooksPath .githooks
+  echo "HOOK  core.hooksPath -> .githooks"
 
-# Install pinned npm CLI tools from tools/package-lock.json
-install_node_tools
+  # Install custom zsh plugins (requires Oh My Zsh to be installed first)
+  install_zsh_plugin "zsh-users/zsh-autosuggestions" "" "v0.7.1" "e52ee8ca55bcc56a17c828767a3f98f22a68d4eb"
+  install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6aafd24e5acb5b2e17e4dd5dddf3e"
+
+  # Install pinned npm CLI tools from tools/package-lock.json
+  install_node_tools
+fi
 
 # SNYK_TOKEN powers the work-laptop skill-scan guard (.claude/hooks/skill-scan-guard.sh).
 # Inject it into the default profile's settings.json env on the work machine only, so the
