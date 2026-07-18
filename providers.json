@@ -52,7 +52,16 @@
     "overrides": {
       "model": "opus",
       "alwaysThinkingEnabled": true,
-      "promptSuggestionEnabled": false
+      "promptSuggestionEnabled": false,
+      "hooks": {
+        "UserPromptSubmit": [
+          {
+            "hooks": [
+              { "type": "command", "command": "bash ~/.claude/hooks/deepseek-peak-hours-guard.sh" }
+            ]
+          }
+        ]
+      }
     }
   },
   "mimo": {

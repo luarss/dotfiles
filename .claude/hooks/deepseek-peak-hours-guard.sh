@@ -2,9 +2,14 @@
 # Block s-claude during DeepSeek's peak-hour surcharge windows (UTC): 01:00-04:00 and 14:00-18:00.
 # Checks ANTHROPIC_BASE_URL env var first; falls back to reading from the active profile's
 # settings.json since env vars from settings.json are not exported to hook subprocesses.
+# Cheap gate: this guard only matters for the deepseek profile
+# (.claude-second-profile, per providers.json). Skip everything else for
+# every other profile without paying jq's ~25ms startup cost.
+config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+[[ "$config_dir" == *second-profile* ]] || exit 0
+
 base_url="${ANTHROPIC_BASE_URL:-}"
 if [[ -z "$base_url" ]]; then
-    config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     base_url=$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$config_dir/settings.json" 2>/dev/null)
 fi
 [[ "$base_url" == *"deepseek"* ]] || exit 0
