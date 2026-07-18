@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap script.
+Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap script. **macOS only** — `install.sh` no-ops on Linux (it exits early with a skip message and touches nothing in `$HOME`), since the multi-profile Claude/zsh setup targets the dev laptop, not the bwrap sandbox used by remote/orchestrated sessions.
 
 ## Structure
 
@@ -40,7 +40,7 @@ cl --list        # list available providers
 The default `claude` profile (`.claude`) has [rtk](https://github.com/rtk-ai/rtk) wired in for token-saving command rewrites. `rtk` itself is installed via the `Brewfile` (`brew "rtk"`). It lives **only** in the default profile, so the third-party profiles (`s-claude`, `d-claude`) stay untouched:
 
 - Its `overrides.hooks.PreToolUse` re-declares the shared guards (`remote-command-guard.sh`, `db-guard.sh`, `db-rate-limit.sh`) **plus** the work-laptop `skill-scan-guard.sh` (see Security) **plus** `.claude/hooks/rtk-hook.sh`, which wraps `rtk hook claude` and transparently rewrites Bash commands (`git status` → `rtk git status`). The rtk hook is listed **last** so the security guards inspect the original command first. (The `mcp__.*mysql.*` matcher carrying `db-rate-limit.sh` is re-declared here too.) The wrapper no-ops on non-Darwin so Linux machines aren't broken by a missing `rtk` binary.
-- `.claude/RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). On macOS, `install.sh` symlinks it and generates `~/.claude/CLAUDE.md` with `@RTK.md` included. On Linux, neither the symlink nor the `@`-import is created so rtk context never loads.
+- `.claude/RTK.md` — the rtk meta-command reference (`rtk gain`, `rtk discover`, `rtk proxy`). `install.sh` (macOS only) symlinks it and generates `~/.claude/CLAUDE.md` with `@RTK.md` included. Since install no-ops on Linux, rtk context never loads there.
 - **Telemetry is disabled** two ways: `overrides.env.RTK_TELEMETRY_DISABLED=1` in `providers.json` (covers the in-Claude hook), and `export RTK_TELEMETRY_DISABLED=1` in `.zshrc` (covers manual `rtk` use in the shell). rtk telemetry is also off by default / opt-in, so this just makes the opt-out explicit and reproducible.
 
 After install, **restart Claude Code** for the hook to take effect.
@@ -64,7 +64,7 @@ export SNYK_TOKEN="..."             # work laptop only — skill-scan-guard's ag
 ./install.sh
 ```
 
-The script symlinks dotfiles into `$HOME`, generates each profile's `settings.json` and the zsh wrappers from `providers.json`, and configures git to use `.githooks/` via `core.hooksPath`. It also symlinks each profile's `AGENTS.md`. `CLAUDE.md` is symlinked on Linux, but on macOS for profiles with `RTK.md` it is generated (with `@RTK.md` appended) — re-run install after editing `.claude/CLAUDE.md` on macOS.
+The script runs on macOS only (it no-ops on Linux). It symlinks dotfiles into `$HOME`, generates each profile's `settings.json` and the zsh wrappers from `providers.json`, and configures git to use `.githooks/` via `core.hooksPath`. It also symlinks each profile's `AGENTS.md`. `CLAUDE.md` is symlinked, except for profiles with `RTK.md` where it is generated (with `@RTK.md` appended) — re-run install after editing `.claude/CLAUDE.md`.
 
 ## Git Hooks
 

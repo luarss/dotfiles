@@ -22,33 +22,11 @@ symlink() {
   echo "LINK  $dst -> $src"
 }
 
-# On Linux: write ~/.zshenv (real file) setting ZDOTDIR to the dotfiles dir.
-# zsh then loads .zshrc/.zprofile/etc. from $ZDOTDIR without any per-file
-# stubs. ~/.zshenv must be a real file because bwrap follows symlinks when
-# creating tmpfs bind-mount points, causing ENOENT if the target dir isn't
-# mounted yet.
-#
-# On macOS: bwrap doesn't exist, so there is no symlink issue. Keep the
-# simple symlink for ~/.zshrc so edits to the repo file are live immediately.
+# macOS/Darwin only: plain symlink for ~/.zshrc so edits to the repo file are
+# live immediately. This whole script no-ops on Linux (see the guard at the top
+# of the main section), so there is no Linux/bwrap branch here anymore.
 setup_zsh_config() {
-  if [ "$(uname)" = "Linux" ]; then
-    local dst="$HOME/.zshenv"
-    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-      echo "SKIP  $dst (exists and is not a symlink)"
-      return
-    fi
-    rm -f "$dst"
-    printf 'export ZDOTDIR="%s"\n' "$DOTFILES" > "$dst"
-    echo "GEN   $dst (ZDOTDIR=$DOTFILES)"
-    # ~/.zshrc is superseded by $ZDOTDIR/.zshrc — remove the symlink if present
-    if [ -L "$HOME/.zshrc" ]; then
-      rm "$HOME/.zshrc"
-      echo "RM    $HOME/.zshrc (symlink, superseded by ZDOTDIR)"
-    fi
-  else
-    # macOS / Darwin: plain symlink, edits are live
-    symlink .zshrc
-  fi
+  symlink .zshrc
 }
 
 
@@ -274,6 +252,14 @@ install_node_tools() {
 # When sourced (e.g. by tests that want a single function), stop here so only
 # the function definitions above load and none of the install steps below run.
 [ "${BASH_SOURCE[0]}" != "${0}" ] && return 0
+
+# These are macOS/zsh dotfiles. On Linux (e.g. the bwrap sandbox used by
+# remote/orchestrated sessions) there is nothing to install — no-op with a
+# message so nothing lands in $HOME and no git config is touched.
+if [ "$(uname)" = "Linux" ]; then
+  echo "SKIP  install (Linux is not a supported target for these dotfiles)"
+  exit 0
+fi
 
 # Work-machine detection — gates routine restore and the personal sonnet switch.
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
