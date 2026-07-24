@@ -38,6 +38,15 @@ USAGE_CRIT_PCT=90
 DEFAULT_CTX_LIMIT=200000
 CTX_LIMIT_1M=1000000
 
+# Length of the 7-day rate-limit window, in seconds (7 * 24 * 3600). Used to
+# derive the window's start (resets_at - SEVEN_DAY_WINDOW) so we can project
+# end-of-window usage from the current rate of consumption.
+SEVEN_DAY_WINDOW=604800
+# Skip the projection until at least this fraction of the window has elapsed —
+# early in the window the elapsed time is tiny and the linear extrapolation is
+# wildly unstable (a 1% burn in the first 10 minutes projects to ~1000%).
+PROJECT_MIN_ELAPSED_FRAC=0.02
+
 # Cache hit rate thresholds.
 # ~90% is the healthy target on active sessions; the Claude Code team alerts
 # on cache breaks. Dropping ~20 points typically signals cache busting (e.g.
@@ -252,24 +261,62 @@ format_reset() {
     fi
 }
 
+# Project end-of-window 7d usage by linear extrapolation of the current burn
+# rate. Given current usage% and the window reset time, we know how far through
+# the 7-day window we are and scale the usage to the full window:
+#   window_start   = reset_at - SEVEN_DAY_WINDOW
+#   elapsed_frac   = (now - window_start) / SEVEN_DAY_WINDOW
+#   projected_pct  = used_pct / elapsed_frac
+# Emits a colored " → proj NN%" string (red if projected to exhaust the window,
+# yellow past the warn threshold). No-op when we can't compute a stable value:
+# no reset timestamp, no usage, or too early in the window.
+project_7d_usage() {
+    local used_pct=$1 reset_at=$2 now window_start elapsed elapsed_frac projected pct_int color
+    [[ -z "$used_pct" || -z "$reset_at" ]] && return 0
+
+    now=$(date +%s)
+    window_start=$((reset_at - SEVEN_DAY_WINDOW))
+    elapsed=$((now - window_start))
+    [[ "$elapsed" -le 0 ]] 2>/dev/null && return 0
+
+    elapsed_frac=$(awk "BEGIN {printf \"%.6f\", $elapsed / $SEVEN_DAY_WINDOW}")
+    # Too early in the window for a meaningful projection.
+    awk "BEGIN {exit !($elapsed_frac < $PROJECT_MIN_ELAPSED_FRAC)}" && return 0
+
+    projected=$(awk "BEGIN {printf \"%.0f\", $used_pct / $elapsed_frac}")
+    pct_int=${projected:-0}
+
+    if [[ $pct_int -ge 100 ]]; then
+        color=$C_RED
+    elif [[ $pct_int -ge $USAGE_WARN_PCT ]]; then
+        color=$C_YELLOW
+    else
+        color=$C_GREEN
+    fi
+
+    printf " %b→ proj%b %b%s%%%b" "$C_DIM" "$C_RESET" "$color" "$pct_int" "$C_RESET"
+}
+
 # 5h/7d subscription-usage readout. No-op unless SHOW_USAGE_LIMITS=1 (default
 # profile only) and at least one rate-limit window is present.
-#   mode "full"    — "⏳ usage: 5h limit 36% (resets 2h13m) · 7d limit 18% (resets 2d21h)"
-#   mode "compact" — "⏳ 5h 36% 7d 18%"   (labels + resets dropped to save space)
+#   mode "full"    — "⏳ usage: 5h limit 36% (resets 2h13m) · 7d limit 18% (resets 2d21h) → proj 45%"
+#   mode "compact" — "⏳ 5h 36% 7d 18% →45%"   (labels + resets dropped to save space)
+# The "→ proj NN%" tail is the 7-day usage projected to the end of the window at
+# the current burn rate (see project_7d_usage).
 build_usage_segment() {
     [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
     local mode=${1:-full} seg=""
 
     if [[ "$mode" == "compact" ]]; then
         [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")"
-        [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")"
+        [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")"
         [[ -z "$seg" ]] && return 0
         printf " %b⏳%b%s" "$C_DIM" "$C_RESET" "$seg"
         return 0
     fi
 
     [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h limit${C_RESET} $(colorize_usage_pct "$RL_5H")$(format_reset "$RL_5H_RESET")"
-    [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}·${C_RESET} ${C_DIM}7d limit${C_RESET} $(colorize_usage_pct "$RL_7D")$(format_reset "$RL_7D_RESET")"
+    [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}·${C_RESET} ${C_DIM}7d limit${C_RESET} $(colorize_usage_pct "$RL_7D")$(format_reset "$RL_7D_RESET")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")"
     [[ -z "$seg" ]] && return 0
 
     printf " %b⏳ usage:%b%s" "$C_DIM" "$C_RESET" "$seg"
