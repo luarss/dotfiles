@@ -101,6 +101,7 @@
   "ignorePatterns": ["bazel-*"],
   "attribution": {
     "commit": "",
-    "pr": ""
+    "pr": "",
+    "sessionUrl": false
   }
 }
