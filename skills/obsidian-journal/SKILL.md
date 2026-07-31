@@ -1,11 +1,11 @@
 ---
 name: claudecode-obsidian-journal
-description: Log and query employment-diary entries (Wins, Learning, Feedback, Discussion) in Obsidian. Use for /win, /learning, /feedback, /discussion, or any ask to log, record, search, or review entries in the diary, work journal, or career log.
+description: Log and query employment-diary entries (Wins, Learning, Feedback, Discussion) and weekly sync notes in Obsidian. Use for /win, /learning, /feedback, /discussion, /weekly, or any ask to log, record, search, or review entries in the diary, work journal, career log, or weekly update.
 ---
 
 # Claude Code Obsidian Journal
 
-A structured journaling skill for an employment diary maintained in Obsidian across four sections: **Wins**, **Learning**, **Feedback**, and **Discussion**, all under `~/work/notes/NUS-Enterprise/Reflections/`.
+A structured journaling skill for an employment diary maintained in Obsidian across four sections: **Wins**, **Learning**, **Feedback**, and **Discussion**, all under `~/work/notes/NUS-Enterprise/Reflections/`. It also handles the **weekly sync note** under `~/work/notes/NUS-Enterprise/Weekly/` — one file per ISO week that logging appends to (see [Weekly logging](#weekly-logging)).
 
 Each section has:
 - An **`Index.md`** — summary table at the top, one row per entry, linking to the entry file via Obsidian wiki link
@@ -17,8 +17,8 @@ The point of this skill is to make the journaling workflow fast enough that the 
 
 Invoke this skill when the user:
 
-- Uses a slash command: `/win`, `/learning`, `/feedback`, `/discussion`
-- Asks to log/record/add something to their diary, journal, or any of the four sections by name
+- Uses a slash command: `/win`, `/learning`, `/feedback`, `/discussion`, `/weekly`
+- Asks to log/record/add something to their diary, journal, any of the four sections by name, or this week's weekly sync note
 - Asks to query, search, filter, or summarize past entries (e.g. "what wins did I log last quarter?", "pull up the feedback from my skip-level")
 - References the diary in passing in a way that implies they want to interact with it ("I should note this as a learning")
 
@@ -34,6 +34,8 @@ On the first invocation, verify the four section directories exist:
 - `~/work/notes/NUS-Enterprise/Reflections/Discussion/`
 
 If any are missing, tell the user and stop. No caching needed — paths are static for the session.
+
+For `/weekly`, the relevant directory is `~/work/notes/NUS-Enterprise/Weekly/` (with its `Index.md`); the per-week file is created on demand when it doesn't exist yet.
 
 ## The four commands
 
@@ -135,6 +137,35 @@ When the user asks to edit an existing entry:
 3. Group results by the most relevant dimension (category, quarter, source) unless the user asked for chronological order.
 4. For pattern questions, actually identify themes — don't just list entries.
 
+## Weekly logging
+
+`/weekly` logs into the **current ISO week's** sync note under `~/work/notes/NUS-Enterprise/Weekly/`. Unlike the four reflection commands, there is **one file per week** and logging **appends to a section** — it does not create a new file per event. Full field/template/section specs are in `references/schemas.md` (**Weekly**).
+
+### Resolving the week file
+
+1. Compute the identifiers (see schemas.md → *Computing the current week*):
+   - `WEEK=$(date +%G-W%V)` → e.g. `2026-W31`
+   - `MON=$(date -v-mon +%Y-%m-%d)`; `WED=$(date -j -v+2d -f %Y-%m-%d "$MON" +%Y-%m-%d)` → the Wednesday sync date.
+   - If the user names a specific week (e.g. "log to W32"), use that instead of the computed one.
+2. Target file: `~/work/notes/NUS-Enterprise/Weekly/<WEEK>.md`.
+3. **If it exists** → go to *Appending*.
+   **If it does not exist** → *Scaffold* it first (the current ISO week may legitimately have no file yet).
+
+### Scaffolding a new week
+
+1. Tell the user no note exists for `<WEEK>` and offer to create it.
+2. On confirm, **Write** `<WEEK>.md` from the scaffold template in schemas.md, substituting `<WEEK>` and `<WED>`.
+3. **Read** `Weekly/Index.md`, then **Edit** it to insert `| <WEEK> | <WED> | [[<WEEK>]] |` at the **top** of the data rows (newest-first), using the current top data row as `old_str`.
+4. Continue to *Appending* to add the user's actual content.
+
+### Appending to a section
+
+1. **Route** the item to a section using the table in schemas.md → *Section-append rules* (Todo → Open/Done, project update → Updates/Status card, meeting → Adhoc Syncs, talk → Seminars/Talks, headline → TL;DR, risk → Blockers, carry-over → Follow-ups, else → Raw Notes). Ask which section only if genuinely ambiguous.
+2. **Auto-fill** owner as `Shui` and any date as `<WED>` (or today) unless the user says otherwise.
+3. **Show a preview** of the exact line(s) and the target section, then ask "Log this?" Wait for confirmation.
+4. On confirm, **Edit** the file: anchor `old_str` on the section heading or its last existing line; if the section holds only the placeholder `-`, replace that line rather than adding a second empty bullet.
+5. Reply with one line: confirmation + the relative path (from `~/work/notes/`) + the section.
+
 ## Principles
 
 - **Low barrier beats completeness.** A 2-minute entry written beats a perfect entry never written.
@@ -144,5 +175,5 @@ When the user asks to edit an existing entry:
 
 ## Reference files
 
-- `references/schemas.md` — Frontmatter fields, body format, and Index.md row format for each section.
+- `references/schemas.md` — Frontmatter fields, body format, and Index.md row format for each reflection section, plus the **Weekly** note (frontmatter, scaffold template, section-append rules, Index row).
 - `references/examples.md` — Worked examples of good entries. Consult for tone and level of detail.
