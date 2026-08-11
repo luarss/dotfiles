@@ -167,6 +167,48 @@ json_none() {
   done
 }
 
+# ─── context-window detection ─────────────────────────────────────────────────
+#
+# 258k input tokens is 25.8% of a 1M window and 129.0% of a 200k one, so the
+# rendered percentage tells us which CTX_LIMIT the script picked.
+
+# JSON naming a specific model id, pointed at a 258k-token transcript.
+json_model() {
+  local transcript="$WORKDIR/transcript.jsonl"
+  printf '%s\n' '{"usage":{"input_tokens":258000,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":100}}' > "$transcript"
+  jq -n --arg dir "$DIRPATH" --arg id "$1" --arg t "$transcript" \
+    '{model:{display_name:"Test",id:$id},
+      workspace:{current_dir:$dir},
+      transcript_path:$t}'
+}
+
+@test "1M-context models render 258k as 25.8%" {
+  for id in claude-opus-5 claude-sonnet-5 claude-fable-5 claude-mythos-5 \
+            claude-opus-4-8 claude-opus-4-7 claude-opus-4-6 claude-sonnet-4-6 \
+            'claude-sonnet-4-5[1m]'; do
+    out=$(sl 300 "$(json_model "$id")" 0)
+    [[ "$out" == *"25.8%"* ]] || {
+      echo "$id did not resolve to a 1M context window: $out" >&2
+      return 1
+    }
+  done
+}
+
+@test "200k-context models render 258k as over 100%" {
+  for id in claude-haiku-4-5-20251001 claude-opus-4-5 claude-sonnet-4-5; do
+    out=$(sl 300 "$(json_model "$id")" 0)
+    [[ "$out" == *"129.0%"* ]] || {
+      echo "$id did not resolve to a 200k context window: $out" >&2
+      return 1
+    }
+  done
+}
+
+@test "models.json lookup wins for third-party 1M models" {
+  out=$(sl 300 "$(json_model deepseek-v4-pro)" 0)
+  [[ "$out" == *"25.8%"* ]]
+}
+
 # ─── core line always present ─────────────────────────────────────────────────
 
 @test "core segments render regardless of usage settings" {

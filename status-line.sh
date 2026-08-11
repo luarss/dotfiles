@@ -86,7 +86,8 @@ CWD=$(echo "$INPUT" | jq -r '.workspace.current_dir // "."')
 #      can't carry a "[1m]" tag — DeepSeek v4, Xiaomi MiMo v2.5). Update
 #      models.json when adding a new provider, not this script.
 #   2. Regex fallback for Anthropic models: explicit "[1m]" opt-in suffix, or
-#      native-1M families (Fable 5, Mythos 5, Opus 4.6/4.7/4.8).
+#      native-1M families (Fable 5, Mythos 5, Opus 5, Opus 4.6/4.7/4.8,
+#      Sonnet 5, Sonnet 4.6). Haiku 4.5 is 200k and deliberately excluded.
 MODELS_JSON="$(dirname "$0")/models.json"
 CTX_LIMIT_FROM_JSON=""
 if [[ -f "$MODELS_JSON" ]]; then
@@ -95,7 +96,7 @@ fi
 
 if [[ -n "$CTX_LIMIT_FROM_JSON" ]]; then
     CTX_LIMIT=$CTX_LIMIT_FROM_JSON
-elif echo "$MODEL_ID" | grep -qiE '1m|fable|mythos|opus-4-[678]'; then
+elif echo "$MODEL_ID" | grep -qiE '1m|fable|mythos|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6'; then
     CTX_LIMIT=$CTX_LIMIT_1M
 else
     CTX_LIMIT=$DEFAULT_CTX_LIMIT
