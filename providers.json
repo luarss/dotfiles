@@ -5,7 +5,7 @@
     "token": "ANTHROPIC_AUTH_TOKEN",
     "thirdParty": false,
     "overrides": {
-      "model": "opus[1m]",
+      "model": "claude-opus-4-8[1m]",
       "effortLevel": "high",
       "env": { "RTK_TELEMETRY_DISABLED": "1", "SHOW_USAGE_LIMITS": "1" },
       "hooks": {
