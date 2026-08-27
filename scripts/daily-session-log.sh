@@ -97,24 +97,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
-RUN_START="$(date +%s)"
+# Marker whose mtime is this run's start instant at full filesystem precision.
+# Persisted as the watermark on success (touch -r), so the next run selects only
+# sessions modified strictly after it — no lossy second-granularity round-trip
+# (which would re-select a session whose sub-second mtime shares the same second).
+RUN_MARKER="$SCRATCH/run-start.marker"
+touch "$RUN_MARKER"
+save_watermark() { touch -r "$RUN_MARKER" "$WATERMARK"; }
 
 # --- which sessions? ("since last run" watermark) ---------------------------
 # Encode ~/work the way Claude Code names project dirs: every "/" becomes "-".
 # e.g. /Users/me/work -> -Users-me-work ; children are "<prefix>-<name>".
 WORK_PREFIX="$(printf '%s' "$WORK_ROOT" | sed 's#/#-#g')"
 
-# Build a reference file at the watermark time so BSD `find -newer` (portable,
-# unlike GNU-only -newermt) can select sessions touched since the last run.
+# Select sessions modified since the last successful run, using the watermark
+# file's own mtime as the `find -newer` reference (full precision; portable,
+# unlike GNU-only -newermt). First run: fall back to a 24h-ago reference so we
+# don't dump the whole history at once.
 if [ -f "$WATERMARK" ]; then
-  wm_epoch="$(cat "$WATERMARK")"
+  REF="$WATERMARK"
 else
-  # First run: look back 24h so we don't dump the entire history at once.
-  wm_epoch="$(epoch_yesterday)"
+  REF="$SCRATCH/first-run.ref"
+  touch -t "$(epoch_stamp "$(epoch_yesterday)")" "$REF"
   log "no watermark; defaulting to last 24h"
 fi
-REF="$SCRATCH/watermark.ref"
-touch -t "$(epoch_stamp "$wm_epoch")" "$REF"
 
 # Project dirs under the work root (the root itself + all children).
 # (while-read, not mapfile — macOS /bin/bash is 3.2 and has no mapfile.)
@@ -127,7 +133,7 @@ sessions=()
 while IFS= read -r f; do sessions+=("$f"); done < <(find "${projdirs[@]}" -maxdepth 1 -name '*.jsonl' -newer "$REF" 2>/dev/null | sort)
 if [ "${#sessions[@]}" -eq 0 ]; then
   log "no work sessions since last run; updating watermark and exiting"
-  echo "$RUN_START" > "$WATERMARK"
+  save_watermark
   exit 0
 fi
 log "found ${#sessions[@]} work session(s) to log"
@@ -252,7 +258,7 @@ fi
 
 if [ "${#blocks[@]}" -eq 0 ]; then
   log "nothing loggable across sessions; updating watermark and exiting"
-  echo "$RUN_START" > "$WATERMARK"
+  save_watermark
   exit 0
 fi
 
@@ -294,7 +300,7 @@ done
 # Recompute whether anything actually changed (all blocks may have been dupes).
 if git -C "$WORKTREE" diff --quiet -- "$WEEKLY_SUBPATH/$week.md"; then
   log "all entries already logged today; nothing to commit"
-  echo "$RUN_START" > "$WATERMARK"
+  save_watermark
   exit 0
 fi
 
@@ -306,7 +312,7 @@ if [ "$DRY_RUN" = "1" ]; then
   log "DRY RUN — diff that would be committed:"
   git -C "$WORKTREE" --no-pager diff -- "$rel" || true
   log "DRY RUN — would push branch '$branch' and open PR against '$base'"
-  echo "$RUN_START" > "$WATERMARK"
+  save_watermark
   exit 0
 fi
 
@@ -324,5 +330,5 @@ else
   log "opened PR for $branch"
 fi
 
-echo "$RUN_START" > "$WATERMARK"
+save_watermark
 log "done: logged ${#logged_labels[@]} session(s) to $rel"
