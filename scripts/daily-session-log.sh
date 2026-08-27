@@ -56,6 +56,12 @@ if [ "$DRY_RUN" = "1" ]; then DRY_JSON=true; else DRY_JSON=false; fi
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 die() { log "ERROR: $*"; exit 1; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+# epoch (seconds) -> `touch -t` stamp, portable across BSD (macOS) and GNU (Linux)
+# date. BSD spells epoch conversion `date -r N`; on GNU `-r` means reference-file,
+# so that form fails there and we fall back to GNU's `date -d @N`.
+epoch_stamp() { date -r "$1" +%Y%m%d%H%M.%S 2>/dev/null || date -d "@$1" +%Y%m%d%H%M.%S; }
+# 24h-ago epoch, portable (BSD `-v`, else GNU `-d`).
+epoch_yesterday() { date -v-1d +%s 2>/dev/null || date -d '1 day ago' +%s; }
 audit() { mkdir -p "$(dirname "$COST_LOG")"; printf '%s\n' "$1" >> "$COST_LOG"; }
 calc_cost() { awk -v i="$1" -v o="$2" -v pi="$PRICE_IN" -v po="$PRICE_OUT" \
   'BEGIN{printf "%.6f", i/1e6*pi + o/1e6*po}'; }
@@ -104,11 +110,11 @@ if [ -f "$WATERMARK" ]; then
   wm_epoch="$(cat "$WATERMARK")"
 else
   # First run: look back 24h so we don't dump the entire history at once.
-  wm_epoch="$(date -v-1d +%s 2>/dev/null || date -d '1 day ago' +%s)"
+  wm_epoch="$(epoch_yesterday)"
   log "no watermark; defaulting to last 24h"
 fi
 REF="$SCRATCH/watermark.ref"
-touch -t "$(date -r "$wm_epoch" +%Y%m%d%H%M.%S)" "$REF"
+touch -t "$(epoch_stamp "$wm_epoch")" "$REF"
 
 # Project dirs under the work root (the root itself + all children).
 # (while-read, not mapfile — macOS /bin/bash is 3.2 and has no mapfile.)
