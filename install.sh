@@ -156,6 +156,68 @@ install_plugin_lock() {
   echo "COPY  $HOME/.claude/plugins/installed_plugins.json (paths expanded for $HOME)"
 }
 
+# Weekday-9am launchd agent that runs scripts/daily-session-log.sh — logs each
+# Claude Code session under ~/work into the latest weekly note and opens a PR.
+# Work-machine only (like the skill-scan guard), and only when a ~/work/notes git
+# checkout exists; the script itself self-guards on GEMINI_API_KEY and the repo.
+install_session_log_agent() {
+  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+    echo "SKIP  daily-session-log agent (non-work machine)"
+    return 0
+  fi
+  if [ ! -d "$HOME/work/notes/.git" ]; then
+    echo "SKIP  daily-session-log agent (~/work/notes not a git checkout)"
+    return 0
+  fi
+  local label="com.$(id -un).daily-session-log"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local script="$DOTFILES/scripts/daily-session-log.sh"
+  local logdir="$HOME/.claude/logs"
+  mkdir -p "$HOME/Library/LaunchAgents" "$logdir"
+
+  # Five StartCalendarInterval entries (Weekday 1..5 = Mon..Fri) at 09:00.
+  local weekdays=""
+  local d
+  for d in 1 2 3 4 5; do
+    weekdays+="    <dict><key>Weekday</key><integer>$d</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+"
+  done
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$script</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+$weekdays  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>$logdir/daily-session-log.log</string>
+  <key>StandardErrorPath</key><string>$logdir/daily-session-log.log</string>
+</dict>
+</plist>
+PLIST
+  echo "GEN   $plist"
+
+  # Reload so schedule/env changes take effect (ignore unload error on first install).
+  launchctl unload "$plist" 2>/dev/null || true
+  if launchctl load -w "$plist" 2>/dev/null; then
+    echo "LOAD  $label (weekdays 09:00)"
+  else
+    echo "WARN  could not launchctl load $label — load it manually"
+  fi
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -297,6 +359,9 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Install pinned npm CLI tools from tools/package-lock.json
   install_node_tools
+
+  # Weekday-9am session-log launchd agent (self-skips without ~/work/notes)
+  install_session_log_agent
 fi
 
 # SNYK_TOKEN powers the work-laptop skill-scan guard (.claude/hooks/skill-scan-guard.sh).
