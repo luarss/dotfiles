@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Skill/Plugin Scan Guard — PreToolUse hook (matcher: Bash)
-# Scans a Claude plugin/skill with Snyk agent-scan BEFORE it is installed,
-# blocking the install when the scanner reports a problem.
+# Scans a Claude plugin/skill with Trivy BEFORE it is installed, blocking the
+# install when the scanner reports a finding.
 #
 # Wired ONLY into the default (.claude) profile via providers.json overrides
 # (listed before `rtk hook claude` so it inspects the original command).
@@ -9,8 +9,7 @@
 #
 # Gating — WORK LAPTOP ONLY. If `hostname -s` != $DOTFILES_WORK_HOSTNAME
 # (default Shuis-MacBook-Air) the guard no-ops immediately, so personal
-# machines never scan and never need SNYK_TOKEN. Same hostname switch the
-# sonnet switch in install.sh uses.
+# machines never scan. Same hostname switch the sonnet switch in install.sh uses.
 #
 # Scope: fires on plugin/skill INSTALL commands run through Bash:
 #   - `claude plugin install <target>`
@@ -19,6 +18,9 @@
 #   - an existing local path / SKILL.md           -> scanned in place
 #   - a git URL (https://….git, git@…, github:o/r) -> shallow-cloned to a
 #                                                     temp dir, scanned, removed
+# Cloning downloads files; it never installs or executes them (a git clone does
+# not run the repo's hooks or any postinstall script), and Trivy only READS the
+# files it scans — so vetting never executes the skill it is vetting.
 # A bare marketplace name (nothing local to fetch yet) can't be pre-scanned, so
 # the guard ALLOWS it with a reminder to scan post-install. Skills cloned by
 # hand (plain `git clone` into ~/.claude/skills) are out of scope, like
@@ -28,17 +30,17 @@
 # built-in list is the nus-etp org (all URL forms); SKILL_SCAN_ALLOWLIST
 # (whitespace/newline-separated shell globs) appends ad-hoc entries.
 #
-# Fail-closed: when a scannable target IS present but the scanner can't run
-# (default uvx scanner with no SNYK_TOKEN, or the scanner binary is missing),
-# the install is BLOCKED rather than waved through unscanned.
+# Fail-closed: when a scannable target IS present but the scanner can't run (the
+# trivy binary is missing, or it emits no parseable JSON), the install is
+# BLOCKED rather than waved through unscanned.
 #
 # Scanner command is overridable via SKILL_SCAN_CMD (default:
-# `uvx snyk-agent-scan@0.5.10 --json`) — the test suite stubs it to assert
-# behaviour without a network call. The version is pinned (not @latest):
-# snyk-agent-scan is a closed-source PyPI package with no public git repo, so
-# the immutable reference is version + wheel sha256 (recorded in AGENTS.md),
-# not a commit SHA. PyPI forbids re-uploading a version, so @0.5.10 over HTTPS
-# resolves to that exact artifact; bump deliberately, never float on @latest.
+# `trivy fs --scanners vuln,secret,misconfig --format json -q`) — the test suite
+# stubs it to assert behaviour without a real scan. Trivy is a static binary
+# (installed via the Brewfile, `brew "trivy"`) and needs NO token: secret and
+# misconfig scanning are fully offline, and the vuln DB is cached locally
+# (pre-warmed in install.sh). The immutable reference is the pinned Homebrew
+# formula, not a wheel/commit sha (see AGENTS.md).
 
 set -uo pipefail
 
@@ -93,13 +95,12 @@ done
 
 block() { echo "BLOCKED (skill-scan): $1" >&2; echo "Command: ${COMMAND:0:200}" >&2; exit 2; }
 
-# Decide allow/block from the scanner's --json output, NOT its exit code:
-# snyk-agent-scan exits 0 even when it reports high-severity findings (and its
-# --ci flag is unusable here — it demands --dangerously-run-mcp-servers and
-# errors out on skills). So we run with --json and count the reported `issues`;
-# any issue blocks. Unparseable/empty output (a real scanner failure) also
-# blocks — fail closed.
-SCAN_CMD="${SKILL_SCAN_CMD:-uvx snyk-agent-scan@0.5.10 --json}"
+# Decide allow/block from Trivy's --format json output. We count reported
+# findings across every result (vulnerabilities + secrets + misconfigurations);
+# any finding blocks. Unparseable/empty output (a real scanner failure) also
+# blocks — fail closed. We key off the parsed count, not the exit code, so the
+# behaviour is identical whether or not trivy sets a non-zero exit.
+SCAN_CMD="${SKILL_SCAN_CMD:-trivy fs --scanners vuln,secret,misconfig --format json -q}"
 
 # --- Resolve the target to something scannable ------------------------------
 scan_path=""
@@ -107,7 +108,8 @@ cleanup=""
 if [[ -e "$target" ]]; then
   scan_path="$target"
 elif [[ "$target" =~ ^https?://.*\.git$ || "$target" =~ ^git@ || "$target" =~ ^github: || "$target" =~ ^https?://github\.com/ ]]; then
-  # Remote git source — shallow-clone to a temp dir, scan, then remove.
+  # Remote git source — shallow-clone to a temp dir, scan, then remove. A clone
+  # only fetches files; it does not run the repo's hooks or any install script.
   tmp="$(mktemp -d)" || block "could not create temp dir for scan"
   url="$target"
   [[ "$url" =~ ^github:(.+)$ ]] && url="https://github.com/${BASH_REMATCH[1]}.git"
@@ -125,42 +127,36 @@ else
 fi
 
 # --- Scan (fail closed) -----------------------------------------------------
-# The default uvx scanner needs SNYK_TOKEN; refuse to proceed unscanned.
-if [[ "$SCAN_CMD" == uvx* && -z "${SNYK_TOKEN:-}" ]]; then
-  [[ -n "$cleanup" ]] && rm -rf "$cleanup"
-  block "SNYK_TOKEN not set — cannot vet '$target' before install (add it to .env)"
-fi
-
 scan_bin="${SCAN_CMD%% *}"
 if ! command -v "$scan_bin" >/dev/null 2>&1; then
   [[ -n "$cleanup" ]] && rm -rf "$cleanup"
-  block "scanner '$scan_bin' not found — cannot vet '$target' before install"
+  block "scanner '$scan_bin' not found — cannot vet '$target' before install (brew install trivy)"
 fi
 
 # shellcheck disable=SC2086
 scan_out="$($SCAN_CMD "$scan_path" 2>/dev/null)"; scan_rc=$?
 [[ -n "$cleanup" ]] && rm -rf "$cleanup"
 
-# snyk-agent-scan's --json embeds raw control characters (un-escaped newlines in
-# its reason/thought_process strings), which is technically invalid JSON and
-# makes jq reject the whole document. Strip C0 control chars first — JSON
-# doesn't need them structurally, so the result parses cleanly.
-scan_json="$(printf '%s' "$scan_out" | tr -d '\000-\037')"
-
-# Total issues reported across the result tree. Empty/garbage output (scanner
-# crashed, no JSON) leaves $issues non-numeric -> fail closed below.
-issues="$(jq '[.. | objects | select(has("issues")) | .issues | length] | add // 0' <<<"$scan_json" 2>/dev/null)"
+# Total findings across the result tree: vulnerabilities + secrets +
+# misconfigurations. Empty/garbage output (scanner crashed, no JSON) leaves
+# $issues non-numeric -> fail closed below.
+issues="$(jq '[.Results[]? | (.Vulnerabilities // [] | length)
+                            + (.Secrets // [] | length)
+                            + (.Misconfigurations // [] | length)] | add // 0' \
+  <<<"$scan_out" 2>/dev/null)"
 
 if ! [[ "$issues" =~ ^[0-9]+$ ]]; then
   block "scanner returned no parseable result for '$target' (exit $scan_rc) — cannot vet, blocking"
 fi
 
 if (( issues > 0 )); then
-  jq -r '.. | objects | select(has("issues")) | .issues[]
-         | "  [\(.code) \(.extra_data.severity // "?")] \(.extra_data.title // .message)"' \
-    <<<"$scan_json" >&2 2>/dev/null
-  block "agent-scan flagged '$target' ($issues issue(s)) — install blocked"
+  jq -r '.Results[]? as $r
+         | ( ($r.Vulnerabilities // [])[]    | "  [vuln \(.Severity)] \(.PkgName) \(.VulnerabilityID): \(.Title // "")" ),
+           ( ($r.Secrets // [])[]            | "  [secret \(.Severity)] \(.RuleID) (\($r.Target):\(.StartLine))" ),
+           ( ($r.Misconfigurations // [])[]  | "  [misconfig \(.Severity)] \(.ID): \(.Title // "")" )' \
+    <<<"$scan_out" >&2 2>/dev/null
+  block "trivy flagged '$target' ($issues finding(s)) — install blocked"
 fi
 
-echo "skill-scan: '$target' passed agent-scan (0 issues)." >&2
+echo "skill-scan: '$target' passed trivy scan (0 findings)." >&2
 exit 0

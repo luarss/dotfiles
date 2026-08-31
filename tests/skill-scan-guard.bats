@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 # Tests for .claude/hooks/skill-scan-guard.sh
 #
-# The scanner is stubbed via SKILL_SCAN_CMD. The stub emits snyk-agent-scan
-# `--json` output with STUB_ISSUES findings (default 0 = clean), so these run
-# offline with no SNYK_TOKEN and no uvx/network dependency. The hook decides
-# allow/block from the reported issue count, not the scanner's exit code.
+# The scanner is stubbed via SKILL_SCAN_CMD. The stub emits Trivy `--format json`
+# output with STUB_ISSUES findings (default 0 = clean), so these run offline with
+# no trivy binary and no network dependency. The hook decides allow/block from
+# the reported finding count, not the scanner's exit code.
 
 setup() {
   HOOK="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks/skill-scan-guard.sh"
@@ -14,18 +14,18 @@ setup() {
   hostname() { echo "Shuis-MacBook-Air"; }
   export -f hostname
 
-  # Stub scanner: emits snyk-agent-scan --json with STUB_ISSUES findings
-  # (default 0 = clean). Each finding's message carries a "stub-scan" marker so
-  # tests can assert whether the scanner actually ran.
+  # Stub scanner: emits Trivy --format json with STUB_ISSUES findings (default
+  # 0 = clean), reported as Vulnerabilities. Each finding's Title carries a
+  # "stub-scan" marker so tests can assert whether the scanner actually ran.
   STUB="$WORKDIR/scan-stub.sh"
   cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
-n="${STUB_ISSUES:-0}"; issues=""; i=0
+n="${STUB_ISSUES:-0}"; vulns=""; i=0
 while [ "$i" -lt "$n" ]; do
-  issues="${issues}{\"code\":\"E999\",\"message\":\"stub-scan finding $i\",\"extra_data\":{\"severity\":\"high\",\"title\":\"stub-scan finding $i\"}},"
+  vulns="${vulns}{\"VulnerabilityID\":\"CVE-STUB-$i\",\"PkgName\":\"stub\",\"Severity\":\"HIGH\",\"Title\":\"stub-scan finding $i\"},"
   i=$((i+1))
 done
-printf '{"x":{"servers":[{"issues":[%s]}]}}\n' "${issues%,}"
+printf '{"Results":[{"Target":"stub","Class":"lang-pkgs","Vulnerabilities":[%s]}]}\n' "${vulns%,}"
 exit "${STUB_RC:-0}"
 EOF
   chmod +x "$STUB"
@@ -66,7 +66,7 @@ run_hook() {
   export STUB_RC=0
   run_hook "claude plugin install $WORKDIR/myskill"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"passed agent-scan"* ]]
+  [[ "$output" == *"passed trivy scan"* ]]
 }
 
 @test "work host: flagged local target is blocked" {
@@ -98,15 +98,6 @@ run_hook() {
   run_hook "claude plugin install $WORKDIR/sk"
   [ "$status" -eq 2 ]
   [[ "$output" == *"not found"* ]]
-}
-
-@test "work host: default uvx scanner without SNYK_TOKEN fails closed" {
-  unset SKILL_SCAN_CMD   # fall back to the default `uvx snyk-agent-scan@latest --json`
-  unset SNYK_TOKEN || true
-  mkdir -p "$WORKDIR/sk"
-  run_hook "claude plugin install $WORKDIR/sk"
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"SNYK_TOKEN"* ]]
 }
 
 @test "work host: custom DOTFILES_WORK_HOSTNAME is honored" {

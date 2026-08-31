@@ -364,21 +364,22 @@ if [ "$IS_DARWIN" = 1 ]; then
   install_session_log_agent
 fi
 
-# SNYK_TOKEN powers the work-laptop skill-scan guard (.claude/hooks/skill-scan-guard.sh).
-# Inject it into the default profile's settings.json env on the work machine only, so the
-# PreToolUse hook (and manual `uvx snyk-agent-scan` runs) can authenticate. settings.json is
-# generated into $HOME (never tracked in the repo), so the secret never lands in git. The
-# token is sourced from .env at the top of this script.
+# Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard
+# (.claude/hooks/skill-scan-guard.sh) so scans run offline at hook time. Trivy
+# needs no token — secret/misconfig scanning is already offline; this just caches
+# the vuln DB locally. Work machine only, and only if trivy is installed.
 if [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; then
-  if [ -n "${SNYK_TOKEN:-}" ]; then
-    jq --arg t "$SNYK_TOKEN" '.env.SNYK_TOKEN = $t' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
-      && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
-    echo "SET   $HOME/.claude/settings.json env.SNYK_TOKEN (skill-scan)"
+  if command -v trivy >/dev/null 2>&1; then
+    if trivy fs --download-db-only -q >/dev/null 2>&1; then
+      echo "OK    trivy vuln DB pre-warmed (skill-scan)"
+    else
+      echo "WARN  trivy DB download failed — first skill-scan will fetch it"
+    fi
   else
-    echo "WARN  SNYK_TOKEN not set in .env — skill-scan guard will block scannable installs until you add it"
+    echo "WARN  trivy not installed — run 'brew bundle' so the skill-scan guard can vet installs"
   fi
 else
-  echo "SKIP  SNYK_TOKEN injection (non-work machine)"
+  echo "SKIP  trivy DB pre-warm (non-work machine)"
 fi
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.

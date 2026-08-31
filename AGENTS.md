@@ -58,7 +58,6 @@ No edits to `.zshrc`, `install.sh`, or any `settings.json` are needed — they a
 # Set the token env vars referenced by providers.json first (see .env.example)
 export DEEPSEEK_AUTH_TOKEN="..."    # for s-claude / cl deepseek
 export XIAOMI_AUTH_TOKEN="..."      # for d-claude / cl mimo
-export SNYK_TOKEN="..."             # work laptop only — skill-scan-guard's agent-scan creds
 
 ./install.sh
 ```
@@ -96,10 +95,10 @@ Every profile's `settings.json` is generated from `settings.base.json`, which ca
 
 `.claude/hooks/skill-scan-guard.sh` is **not** in `settings.base.json` — it is wired **only into the default `.claude` profile** via `providers.json` overrides (listed before `rtk hook claude` so it sees the original command), and runs **only on the work laptop**:
 
-- It vets a Claude plugin/skill with **Snyk agent-scan** (`uvx snyk-agent-scan@0.5.10 --json`, version-pinned — see Dependency Locking) **before** it is installed, blocking (exit 2) on any reported `--json` issue (the scanner exits 0 even on findings, so the count is the signal; unparseable output fails closed). Like the sonnet switch, it self-gates on `hostname -s` == `$DOTFILES_WORK_HOSTNAME` (default `Shuis-MacBook-Air`) and no-ops everywhere else, so personal machines never scan and never need a token.
+- It vets a Claude plugin/skill with **Trivy** (`trivy fs --scanners vuln,secret,misconfig --format json -q`, installed via the Brewfile — see Dependency Locking) **before** it is installed, blocking (exit 2) on any reported finding — vulnerabilities, secrets, or misconfigurations (unparseable output fails closed; the count is decided from the JSON, not the exit code). Trivy needs **no token**: secret/misconfig scanning is fully offline and the vuln DB is cached locally (`install.sh` pre-warms it on the work machine). Like the sonnet switch, it self-gates on `hostname -s` == `$DOTFILES_WORK_HOSTNAME` (default `Shuis-MacBook-Air`) and no-ops everywhere else, so personal machines never scan. *(Trivy replaced Snyk agent-scan, dropped over vendor-continuity risk; it reads files statically and never installs/executes the target, so vetting can't trigger a `postinstall`.)*
 - It fires on `claude plugin install <target>` and `claude plugin marketplace add <target>`. A **local path / SKILL.md** is scanned in place; a **git URL** (`https://….git`, `git@…`, `github:o/r`) is shallow-cloned to a temp dir, scanned, then removed; a **bare marketplace name** has nothing local to fetch so it is allowed with a reminder to scan post-install. Skills cloned by hand (plain `git clone` into `~/.claude/skills`) are out of scope — the same kind of blind spot as `db-guard`'s `psql -f`.
 - **Allowlist for trusted internal marketplaces**: targets matching a trusted-marketplace glob skip the scan entirely (globs match the raw target, so all three URL forms — `https://github.com/<org>/*`, `git@github.com:<org>/*`, `github:<org>/*` — are covered). The built-in list is hardcoded to the **nus-etp** org. `SKILL_SCAN_ALLOWLIST` (whitespace/newline-separated shell globs) appends ad-hoc entries without editing the hook.
-- **Fail-closed**: if a scannable target is present but the scanner can't run (default uvx scanner with no `SNYK_TOKEN`, or the scanner binary missing), the install is blocked. `install.sh` injects `SNYK_TOKEN` (from `.env`) into the default profile's `settings.json` env **on the work machine only**, so the secret never lands on personal machines or in git (`settings.json` is generated into `$HOME`, never tracked). The scanner command is overridable via `SKILL_SCAN_CMD` (used by the test suite to stub the scan offline).
+- **Fail-closed**: if a scannable target is present but the scanner can't run (the `trivy` binary is missing, or it emits no parseable JSON), the install is blocked. No secret is involved — Trivy needs no token — so there is nothing to inject into `settings.json`; run `brew bundle` to install trivy. The scanner command is overridable via `SKILL_SCAN_CMD` (used by the test suite to stub the scan offline).
 
 ## Dependency Locking (Supply Chain Hygiene)
 
@@ -110,7 +109,7 @@ Pin every external dependency to an immutable reference. Never use mutable tags 
 - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 ```
 Resolve: `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha`
-Currently unpinned: `actions/checkout` in `.github/workflows/test.yml`
+Pinned: `actions/checkout` v4.2.2 (`11bd719…`) in both `test.yml` and `check-plugin-updates.yml`
 
 **Zsh plugins** (`install_zsh_plugin` in `install.sh`) — clone at a specific tag and assert the SHA:
 ```bash
@@ -123,9 +122,6 @@ Pinned: `zsh-users/zsh-autosuggestions` v0.7.1, `zsh-users/zsh-syntax-highlighti
 **npm CLI tools** (`tools/`, installed by `install_node_tools` in `install.sh`) — exact versions in `tools/package.json`; the committed lockfile carries sha512 integrity pins verified by `npm ci`. Binaries are symlinked into `~/.local/bin` — never alias to `npx <pkg>`. To bump: edit `tools/package.json`, `npm install --package-lock-only`, commit, re-run `./install.sh`.
 Pinned: `ccusage` 20.0.9
 
-**uvx / PyPI tools** — pin the exact version in the run command (never `@latest`); PyPI forbids re-uploading a version, so `@X.Y.Z` resolves to that exact artifact. `snyk-agent-scan` is closed-source with no git repo, so the immutable reference is version + wheel sha256, not a commit SHA. To bump: edit the version in `.claude/hooks/skill-scan-guard.sh` and the hash here.
-Pinned: `snyk-agent-scan` 0.5.10 — wheel `sha256:997f5152884d3edcf0dbfa8c81fe6b67381e463b53e24184dfa0182fdab9d2b9`
-
-**Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor.
+**Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor. `trivy` (the work-laptop skill-scan scanner) rides this same channel — no per-invocation fetch, unlike the `uvx`-delivered scanner it replaced.
 
 **Claude plugins** — `installed_plugins.json` is committed to this repo with `installPath` values using `~` as a placeholder. `install.sh` **copies** (not symlinks) it to `~/.claude/plugins/installed_plugins.json`, expanding `~` → `$HOME` at copy time so paths are valid on the current machine. This keeps the repo file as a pinned snapshot: `gitCommitSha` values only change when the user deliberately updates them, and machine-specific absolute paths never leak into version control. It records the `gitCommitSha` for every installed plugin. To check for updates run `scripts/check-plugin-updates.sh` (also runs weekly via `.github/workflows/check-plugin-updates.yml`, which opens a GitHub issue when any plugin is behind). To update a plugin: let Claude Code upgrade it, then run `scripts/normalize-plugins.sh` to copy the updated file back into the repo with paths normalized to `~`, and commit.
