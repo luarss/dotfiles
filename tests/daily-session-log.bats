@@ -91,16 +91,18 @@ teardown() { rm -rf "$ROOT"; }
   [ -z "$output" ]                              # no branch left behind (worktree cleaned)
 }
 
-@test "real run: commits the entry to a dated branch on origin and opens a PR" {
+@test "real run: commits the entry directly to the base branch on origin (no PR)" {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"opened PR"* ]]
-  grep -q "gh pr create" "$ROOT/gh-calls.log"
+  [[ "$output" == *"done: logged"* ]]
+  [ ! -s "$ROOT/gh-calls.log" ]                 # gh never called; no PR
 
-  local branch note
-  branch="auto/session-log-$(date +%Y-%m-%d)"
-  # The pushed branch on origin contains the appended entry with the bullet.
-  note="$(git -C "$SESSION_LOG_NOTES_REPO" show "origin/$branch:NUS-Enterprise/Weekly/2026-W35.md")"
+  # No dated branch is created; the commit lands straight on origin/main.
+  run git -C "$SESSION_LOG_NOTES_REPO" branch -r --list "origin/auto/session-log-*"
+  [ -z "$output" ]
+
+  local note
+  note="$(git -C "$SESSION_LOG_NOTES_REPO" show "origin/main:NUS-Enterprise/Weekly/2026-W35.md")"
   [[ "$note" == *"## Session log —"* ]]
   [[ "$note" == *"did a concrete thing in foo.py:10"* ]]
   [[ "$note" == *"auto-session-log aaaaaaaa-1111-2222-3333-444444444444"* ]]

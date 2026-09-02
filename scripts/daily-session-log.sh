@@ -1,22 +1,25 @@
 #!/bin/bash -eu
 # daily-session-log.sh — weekday 9am routine (launchd) that logs each Claude Code
-# session run under ~/work into the latest weekly note and opens a PR.
+# session run under ~/work into the latest weekly note and pushes it to the base
+# branch directly (no PR).
 #
 # It is the batch, non-interactive counterpart to the /done skill. /done can't run
 # in cron: it needs a model to summarize a conversation and it confirms before
 # writing. So this script keeps the deterministic parts in shell (which sessions,
-# dedup, weekly-note resolution, git, PR) and delegates ONLY the summary of each
+# dedup, weekly-note resolution, git, push) and delegates ONLY the summary of each
 # session to the Gemini API — one call per session, mirroring /done. (Claude's
 # subscription OAuth can't refresh from a launchd job, so a first-party `claude -p`
 # isn't viable here; the Gemini REST API uses a static GEMINI_API_KEY instead.)
 #
 # NOTE: session transcripts are sent to Google's Gemini endpoint to be summarized.
 #
-# Safety: all git work happens in a throwaway `git worktree`, so the user's real
-# ~/work/notes checkout (branch, working tree) is never touched.
+# Safety: all git work happens in a throwaway detached `git worktree`, so the
+# user's real ~/work/notes checkout (branch, working tree) is never touched. The
+# commit is pushed straight to the base branch; if origin advanced under us the
+# push is retried after a fetch + rebase onto the new base.
 #
 # Env knobs (all optional):
-#   SESSION_LOG_DRY_RUN=1    do everything except push + PR; print what would happen
+#   SESSION_LOG_DRY_RUN=1    do everything except push; print what would happen
 #   SESSION_LOG_MODEL=...     Gemini model (default: gemini-3.6-flash)
 #   SESSION_LOG_NOTES_REPO    override notes repo (default: ~/work/notes)
 #   SESSION_LOG_WORK_ROOT     override work root (default: ~/work)
@@ -67,7 +70,7 @@ calc_cost() { awk -v i="$1" -v o="$2" -v pi="$PRICE_IN" -v po="$PRICE_OUT" \
   'BEGIN{printf "%.6f", i/1e6*pi + o/1e6*po}'; }
 
 # --- preconditions -----------------------------------------------------------
-for bin in curl jq git gh; do
+for bin in curl jq git; do
   command -v "$bin" >/dev/null 2>&1 || die "$bin not found on PATH"
 done
 [ -n "${GEMINI_API_KEY:-}" ] || die "GEMINI_API_KEY not set (add it to $ENV_FILE)"
@@ -82,15 +85,11 @@ fi
 SCRATCH="$(mktemp -d)"
 WORKTREE=""
 cleanup() {
-  # Remove the throwaway worktree and the local branch it created. The branch of
-  # record lives on origin (real runs push it; same-day reruns key off
-  # origin/<branch>), so the local ref is disposable — dropping it keeps the
-  # user's notes repo from accumulating stray auto/session-log-* branches.
+  # Remove the throwaway detached worktree. It creates no local branch (the commit
+  # is pushed straight to the base branch on origin), so there's nothing else to
+  # prune — this keeps the user's notes repo from accumulating stray worktrees.
   if [ -n "$WORKTREE" ]; then
     git -C "$NOTES_REPO" worktree remove --force "$WORKTREE" 2>/dev/null || true
-  fi
-  if [ -n "${branch:-}" ]; then
-    git -C "$NOTES_REPO" branch -D "$branch" 2>/dev/null || true
   fi
   rm -rf "$SCRATCH"
   rmdir "$LOCKDIR" 2>/dev/null || true
@@ -154,7 +153,7 @@ Transcript follows:
 ---'
 
 blocks=()           # one full markdown block per logged session
-logged_labels=()    # for the commit/PR body
+logged_labels=()    # for the run-summary log line
 sum_in=0; sum_out=0; sum_total=0; calls_made=0   # cost-audit accumulators
 
 for sf in "${sessions[@]}"; do
@@ -262,20 +261,15 @@ if [ "${#blocks[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# --- git worktree: apply, commit, push, PR — never touch the real checkout ---
+# --- git worktree: apply, commit, push straight to base — never touch checkout ---
+# All work happens in a throwaway detached worktree at origin/<base>. We commit
+# there and push directly to <base>; idempotent same-day reruns are handled by the
+# per-(session,date) marker already present in the note we fetched from origin.
 base="$(git -C "$NOTES_REPO" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's#.*/##')"
 base="${base:-main}"
-branch="auto/session-log-${TODAY}"
 git -C "$NOTES_REPO" fetch --quiet origin "$base" || die "git fetch failed"
 WORKTREE="$SCRATCH/wt"
-
-# Reuse today's branch if it already exists on origin (idempotent same-day reruns),
-# otherwise start it from the base branch.
-if git -C "$NOTES_REPO" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null; then
-  git -C "$NOTES_REPO" worktree add --quiet -B "$branch" "$WORKTREE" "origin/$branch"
-else
-  git -C "$NOTES_REPO" worktree add --quiet -B "$branch" "$WORKTREE" "origin/$base"
-fi
+git -C "$NOTES_REPO" worktree add --quiet --detach "$WORKTREE" "origin/$base"
 
 # Resolve the target weekly note INSIDE the worktree (same rule as /done).
 weekly_dir="$WORKTREE/$WEEKLY_SUBPATH"
@@ -305,30 +299,37 @@ if git -C "$WORKTREE" diff --quiet -- "$WEEKLY_SUBPATH/$week.md"; then
 fi
 
 rel="$WEEKLY_SUBPATH/$week.md"
-body="Automated session log for ${TODAY}.\n\nSessions:\n"
-for l in "${logged_labels[@]}"; do body+="- $l\n"; done
 
 if [ "$DRY_RUN" = "1" ]; then
   log "DRY RUN — diff that would be committed:"
   git -C "$WORKTREE" --no-pager diff -- "$rel" || true
-  log "DRY RUN — would push branch '$branch' and open PR against '$base'"
+  log "DRY RUN — would commit and push directly to '$base'"
   save_watermark
   exit 0
 fi
 
 git -C "$WORKTREE" add "$rel"
 git -C "$WORKTREE" commit --quiet -m "chore(weekly): auto session log ${TODAY}"
-git -C "$WORKTREE" push --quiet -u origin "$branch"
 
-# Open a PR only if one isn't already open for this branch.
-if gh pr view "$branch" --repo "$(git -C "$NOTES_REPO" remote get-url origin)" >/dev/null 2>&1; then
-  log "PR already open for $branch; pushed new commit"
-else
-  ( cd "$WORKTREE" && printf '%b' "$body" \
-      | gh pr create --base "$base" --head "$branch" \
-          --title "Session log — ${TODAY}" --body-file - )
-  log "opened PR for $branch"
-fi
+# Push straight to the base branch. If the push is rejected because origin/<base>
+# advanced under us (the "merge conflict" case), fetch + rebase our commit onto the
+# new base and retry. A true textual conflict during rebase — rare for append-only
+# edits — aborts and fails this run; the next run retries from a clean base.
+push_tries=0; PUSH_MAX=5
+until git -C "$WORKTREE" push --quiet origin "HEAD:$base" 2>"$SCRATCH/push.err"; do
+  push_tries=$((push_tries + 1))
+  if [ "$push_tries" -ge "$PUSH_MAX" ]; then
+    cat "$SCRATCH/push.err" >&2
+    die "push to $base rejected after $PUSH_MAX attempts"
+  fi
+  log "push rejected; rebasing onto origin/$base and retrying (attempt $push_tries)"
+  git -C "$NOTES_REPO" fetch --quiet origin "$base" || die "git fetch failed"
+  if ! git -C "$WORKTREE" rebase "origin/$base" >>"$SCRATCH/push.err" 2>&1; then
+    git -C "$WORKTREE" rebase --abort 2>/dev/null || true
+    cat "$SCRATCH/push.err" >&2
+    die "rebase onto origin/$base hit a conflict; leaving it for the next run"
+  fi
+done
 
 save_watermark
-log "done: logged ${#logged_labels[@]} session(s) to $rel"
+log "done: logged ${#logged_labels[@]} session(s) to $rel on $base"
