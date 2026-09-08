@@ -218,6 +218,64 @@ PLIST
   fi
 }
 
+# Wednesday-2pm launchd agent that cuts the weekly note over: runs the vault's
+# own tools/new-week.sh --next 2, which ensures this cycle's note exists and
+# creates next Wednesday's (note + deck + Index.md row, all idempotent). /done
+# and daily-session-log.sh target the latest ISO-week note, so creating next
+# week's file IS the cutover. --next 2 also self-heals a missed Wednesday: a
+# late (post-wake) run still covers the upcoming Wednesday and the one after.
+install_weekly_cutover_agent() {
+  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+    echo "SKIP  weekly-cutover agent (non-work machine)"
+    return 0
+  fi
+  local script="$HOME/work/notes/NUS-Enterprise/tools/new-week.sh"
+  if [ ! -f "$script" ]; then
+    echo "SKIP  weekly-cutover agent (no $script)"
+    return 0
+  fi
+  local label="com.$(id -un).weekly-cutover"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local logdir="$HOME/.claude/logs"
+  mkdir -p "$HOME/Library/LaunchAgents" "$logdir"
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$script</string>
+    <string>--next</string>
+    <string>2</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>$logdir/weekly-cutover.log</string>
+  <key>StandardErrorPath</key><string>$logdir/weekly-cutover.log</string>
+</dict>
+</plist>
+PLIST
+  echo "GEN   $plist"
+
+  launchctl unload "$plist" 2>/dev/null || true
+  if launchctl load -w "$plist" 2>/dev/null; then
+    echo "LOAD  $label (Wednesdays 14:00)"
+  else
+    echo "WARN  could not launchctl load $label — load it manually"
+  fi
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -362,6 +420,9 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Weekday-9am session-log launchd agent (self-skips without ~/work/notes)
   install_session_log_agent
+
+  # Wednesday-2pm weekly-note cutover agent (self-skips without the vault tool)
+  install_weekly_cutover_agent
 fi
 
 # Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard
