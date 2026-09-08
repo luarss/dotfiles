@@ -276,6 +276,68 @@ PLIST
   fi
 }
 
+# Quarterly launchd agent (1st of Jan/Apr/Jul/Oct, 09:12) that resurfaces the
+# "refresh the AI landscape diagram" action in the vault TODO backlog, so the
+# etp-vendor-architecture-2026.html landscape gets a quarterly review. Runs
+# scripts/quarterly-landscape-reminder.sh — deterministic, offline, no connectors;
+# the script self-guards on TODO.md and is idempotent per quarter.
+install_quarterly_landscape_agent() {
+  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+    echo "SKIP  quarterly-landscape agent (non-work machine)"
+    return 0
+  fi
+  if [ ! -f "$HOME/work/notes/NUS-Enterprise/TODO.md" ]; then
+    echo "SKIP  quarterly-landscape agent (no vault TODO.md)"
+    return 0
+  fi
+  local label="com.$(id -un).quarterly-landscape"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local script="$DOTFILES/scripts/quarterly-landscape-reminder.sh"
+  local logdir="$HOME/.claude/logs"
+  mkdir -p "$HOME/Library/LaunchAgents" "$logdir"
+
+  # One StartCalendarInterval entry per quarter start (Month 1/4/7/10, Day 1) at 09:12.
+  local quarters=""
+  local m
+  for m in 1 4 7 10; do
+    quarters+="    <dict><key>Month</key><integer>$m</integer><key>Day</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>12</integer></dict>
+"
+  done
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$script</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+$quarters  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>$logdir/quarterly-landscape.log</string>
+  <key>StandardErrorPath</key><string>$logdir/quarterly-landscape.log</string>
+</dict>
+</plist>
+PLIST
+  echo "GEN   $plist"
+
+  launchctl unload "$plist" 2>/dev/null || true
+  if launchctl load -w "$plist" 2>/dev/null; then
+    echo "LOAD  $label (quarter starts 09:12)"
+  else
+    echo "WARN  could not launchctl load $label — load it manually"
+  fi
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -423,6 +485,9 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Wednesday-2pm weekly-note cutover agent (self-skips without the vault tool)
   install_weekly_cutover_agent
+
+  # Quarterly AI-landscape-refresh reminder agent (self-skips without the vault)
+  install_quarterly_landscape_agent
 fi
 
 # Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard
