@@ -23,6 +23,8 @@ and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
 - `gen-settings.jq` — layers base + provider into each profile's `settings.json`
 - `install.sh` — bootstrap script
 - `.githooks/` — git hooks (`core.hooksPath`)
+- `.config/swiftbar/prodwatch.60s.sh` — SwiftBar menu-bar widget (today's git
+  activity + Claude usage); symlinked on the work laptop only
 
 ## Claude Profiles
 

@@ -24,3 +24,6 @@ brew "rtk"
 cask "antigravity-cli"
 cask "claude-code"
 cask "gcloud-cli"
+# Menu-bar productivity widget host (.config/swiftbar/prodwatch.60s.sh).
+# Work-laptop only — install.sh symlinks the plugin and points SwiftBar at it.
+cask "swiftbar"

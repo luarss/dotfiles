@@ -508,6 +508,20 @@ else
   echo "SKIP  trivy DB pre-warm (non-work machine)"
 fi
 
+# SwiftBar productivity widget (menu-bar: today's git activity + Claude usage).
+# Work machine only — the plugin scans ~/work repos and ccusage, which only make
+# sense here. macOS only (SwiftBar is a mac cask). Symlinks the plugin into
+# ~/.config/swiftbar and points SwiftBar's plugin dir at it.
+if [ "$IS_DARWIN" = 1 ] && [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; then
+  mkdir -p "$HOME/.config/swiftbar"
+  symlink .config/swiftbar/prodwatch.60s.sh
+  # SwiftBar's bundle id is com.ameba.SwiftBar; store the plugin dir it watches.
+  defaults write com.ameba.SwiftBar PluginDirectory "$HOME/.config/swiftbar"
+  echo "SET   SwiftBar PluginDirectory -> $HOME/.config/swiftbar"
+else
+  echo "SKIP  SwiftBar widget (non-work machine or non-macOS)"
+fi
+
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
 if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
   jq '.model = "sonnet"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
