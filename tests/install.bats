@@ -79,7 +79,10 @@ teardown() {
 
 @test "install_default_profile_settings_on_linux_has_hooks_and_sonnet" {
   uname() { echo "Linux"; }
-  export -f uname
+  # Mock a non-work hostname so the sonnet switch fires even when the test
+  # suite runs on the work machine itself
+  hostname() { echo "personal-linux-box"; }
+  export -f uname hostname
 
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
@@ -152,6 +155,58 @@ teardown() {
 }
 
 # --- macOS: real install path (uname mocked to Darwin) ---
+
+@test "weekly_cutover_agent_skipped_on_non_work_machine" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SKIP  weekly-cutover agent (non-work machine)"* ]]
+  # No plist may be generated for any label on a non-work machine
+  [ ! -e "$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist" ]
+}
+
+@test "weekly_cutover_agent_installed_on_work_machine_with_vault_tool" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  # Stub launchctl/trivy so the test is hermetic: never touches the real
+  # launchd job or the network (launchctl unload by label would otherwise
+  # unload the REAL agent when tests run on the work machine itself)
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  export -f uname hostname launchctl trivy
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+
+  # The agent additionally requires the vault's new-week.sh to exist
+  mkdir -p "$HOME/work/notes/NUS-Enterprise/tools"
+  touch "$HOME/work/notes/NUS-Enterprise/tools/new-week.sh"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local plist="$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist"
+  [ -f "$plist" ]
+  grep -q "new-week.sh" "$plist"
+  grep -q "<string>--next</string>" "$plist"
+  # Wednesday 14:00 schedule
+  grep -q "<key>Weekday</key><integer>3</integer><key>Hour</key><integer>14</integer>" "$plist"
+}
+
+@test "weekly_cutover_agent_skipped_on_work_machine_without_vault_tool" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  export -f uname hostname launchctl trivy
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SKIP  weekly-cutover agent (no "* ]]
+  [ ! -e "$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist" ]
+}
 
 @test "setup_zsh_config_symlinks_zshrc_on_macos" {
   uname() { echo "Darwin"; }
