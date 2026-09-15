@@ -7,7 +7,10 @@ export PATH="/opt/homebrew/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
 WORK="$HOME/work"
 PROJECTS="$HOME/projects"
 SINCE="$(date +%Y-%m-%dT00:00:00)"
-AUTHOR="song.luar@a5x.ai"
+# --author is a regex; \| alternation lets one scan match several identities.
+WORK_AUTHOR="song.luar@a5x.ai"
+# ~/projects repos commit under the personal GitHub noreply identity too.
+PROJ_AUTHOR="song.luar@a5x.ai\|luarss@users.noreply.github.com"
 
 # Kick off ccusage (the slow half) in the background so it overlaps the git scan.
 USAGE_RAW="$(mktemp)"
@@ -18,11 +21,11 @@ USAGE_PID=$!
 # Populates globals: g_commits g_add g_del g_rows (safe if $1 doesn't exist —
 # the unmatched glob fails the .git guard and the loop body is skipped).
 scan_repos() {
-  local base="$1" d c a del
+  local base="$1" author="$2" d c a del
   g_commits=0; g_add=0; g_del=0; g_rows=""
   for d in "$base"/*/; do
     [ -d "$d/.git" ] || continue
-    read -r c a del < <(git -C "$d" log --since="$SINCE" --author="$AUTHOR" \
+    read -r c a del < <(git -C "$d" log --since="$SINCE" --author="$author" \
         --pretty=format:'C' --numstat 2>/dev/null \
         | awk '/^C/{c++} NF==3{a+=$1;del+=$2} END{print c+0, a+0, del+0}')
     [ "${c:-0}" -gt 0 ] || continue
@@ -31,9 +34,9 @@ scan_repos() {
   done
 }
 
-scan_repos "$WORK"
+scan_repos "$WORK" "$WORK_AUTHOR"
 work_commits=$g_commits; work_add=$g_add; work_del=$g_del; work_rows=$g_rows
-scan_repos "$PROJECTS"
+scan_repos "$PROJECTS" "$PROJ_AUTHOR"
 proj_commits=$g_commits; proj_add=$g_add; proj_del=$g_del; proj_rows=$g_rows
 
 total_commits=$((work_commits + proj_commits))
