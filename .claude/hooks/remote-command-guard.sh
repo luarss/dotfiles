@@ -122,7 +122,9 @@ if not blocked_reason:
         r'\.docker/config\.json\b',
         r'\.pgpass\b',
         r'\.netrc\b',
-        r'\.(bash|zsh|python)_history\b',
+        r'\.(bash|zsh|sh|python|mysql|psql|node_repl)_history\b',
+        r'\.zhistory\b',
+        r'\bfish_history\b',
         r'BEGIN\s+[A-Z0-9 ]*PRIVATE KEY',
         r'\bsecurity\s+find-(generic|internet)-password\b',  # macOS keychain
     ]

@@ -85,7 +85,7 @@ To clean up artifacts an older (pre-scoped) `install.sh` left on a Linux box, ru
 
 ## Security
 
-Every profile's `settings.json` is generated from `settings.base.json`, which carries the shared deny list blocking destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, and key/pem files. Edit `settings.base.json` to change the policy for all profiles at once.
+Every profile's `settings.json` is generated from `settings.base.json`, which carries the shared deny list blocking destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, key/pem files, and shell/REPL history files (`.zsh_history`, `.bash_history`, `.mysql_history`, `.psql_history`, `fish_history`, etc., which can leak secrets typed on the command line). Edit `settings.base.json` to change the policy for all profiles at once.
 
 `settings.base.json` registers `PreToolUse` hooks (all exit 2 to deny). Three run on the `Bash` matcher, and one (`db-rate-limit.sh`) also runs on an `mcp__.*mysql.*` matcher:
 
