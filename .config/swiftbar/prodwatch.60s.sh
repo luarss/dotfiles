@@ -79,6 +79,7 @@ print_section "Projects today" "$PROJECTS" "$proj_commits" "$proj_add" "$proj_de
 echo "---"
 echo "Claude today · \$${cost} · ${htok} tok | font=Menlo"
 [ "$models" != "-" ] && echo "models: ${models} | font=Menlo size=12 color=gray"
+echo "github.com/luarss | font=Menlo size=12 href=https://github.com/luarss"
 echo "---"
 echo "Updated $(date +%H:%M) | size=11 color=gray"
 echo "Refresh | refresh=true"
