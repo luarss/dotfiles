@@ -7,7 +7,6 @@
     "overrides": {
       "model": "claude-opus-4-8[1m]",
       "effortLevel": "high",
-      "promptSuggestionEnabled": false,
       "env": { "RTK_TELEMETRY_DISABLED": "1", "SHOW_USAGE_LIMITS": "1" },
       "hooks": {
         "PreToolUse": [
@@ -53,7 +52,6 @@
     "overrides": {
       "model": "opus",
       "alwaysThinkingEnabled": true,
-      "promptSuggestionEnabled": false,
       "hooks": {
         "UserPromptSubmit": [
           {
@@ -78,8 +76,7 @@
     },
     "overrides": {
       "model": "opus",
-      "alwaysThinkingEnabled": true,
-      "promptSuggestionEnabled": false
+      "alwaysThinkingEnabled": true
     }
   }
 }
