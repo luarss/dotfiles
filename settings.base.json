@@ -5,6 +5,7 @@
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
     "DISABLE_INSTALL_GITHUB_APP_COMMAND": "1",
     "DO_NOT_TRACK": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "npm_config_force": "true"
   },
   "permissions": {

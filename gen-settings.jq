@@ -27,7 +27,6 @@ $base
       + (if $p.thirdParty then {
            "ANTHROPIC_BASE_URL": $p.baseUrl,
            "API_TIMEOUT_MS": "3000000",
-           "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
            "DISABLE_TELEMETRY": "1",
            "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
            "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"
