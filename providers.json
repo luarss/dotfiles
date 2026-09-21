@@ -52,7 +52,6 @@
     "overrides": {
       "model": "opus",
       "alwaysThinkingEnabled": true,
-      "promptSuggestionEnabled": false,
       "hooks": {
         "UserPromptSubmit": [
           {
@@ -77,8 +76,7 @@
     },
     "overrides": {
       "model": "opus",
-      "alwaysThinkingEnabled": true,
-      "promptSuggestionEnabled": false
+      "alwaysThinkingEnabled": true
     }
   }
 }

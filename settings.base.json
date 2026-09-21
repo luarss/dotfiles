@@ -1,5 +1,6 @@
 {
   "outputStyle": "Concise",
+  "promptSuggestionEnabled": false,
   "env": {
     "ENABLE_LSP_TOOL": "1",
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
