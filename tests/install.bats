@@ -208,6 +208,45 @@ teardown() {
   [ ! -e "$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist" ]
 }
 
+@test "install_agy_settings_merges_overrides_and_preserves_app_state" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+
+  # Simulate app-managed state that already exists before install.sh runs
+  mkdir -p "$HOME/.gemini/antigravity-cli"
+  cat > "$HOME/.gemini/antigravity-cli/settings.json" <<'EOF'
+{
+  "gcp": { "project": "some-project" },
+  "trustedWorkspaces": ["/Users/me/work/repo"],
+  "enableTelemetry": true
+}
+EOF
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SET   $HOME/.gemini/antigravity-cli/settings.json <- agy-settings.overrides.json"* ]]
+
+  local settings="$HOME/.gemini/antigravity-cli/settings.json"
+  # Overrides applied
+  [ "$(jq -r '.enableTelemetry' "$settings")" = "false" ]
+  [ "$(jq -r '.showFeedbackSurvey' "$settings")" = "false" ]
+  [ "$(jq -r '.showTips' "$settings")" = "false" ]
+  [ "$(jq -r '.notifications' "$settings")" = "false" ]
+  # Pre-existing app state untouched
+  [ "$(jq -r '.gcp.project' "$settings")" = "some-project" ]
+  [ "$(jq -r '.trustedWorkspaces[0]' "$settings")" = "/Users/me/work/repo" ]
+}
+
+@test "install_agy_settings_skipped_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/.gemini/antigravity-cli/settings.json" ]
+}
+
 @test "setup_zsh_config_symlinks_zshrc_on_macos" {
   uname() { echo "Darwin"; }
   export -f uname

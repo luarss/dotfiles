@@ -68,6 +68,10 @@ On macOS the script symlinks dotfiles into `$HOME`, generates every profile's `s
 
 To clean up artifacts an older (pre-scoped) `install.sh` left on a Linux box, run `scripts/reset-linux.sh` there (dry run by default; `-f` to remove). It deletes only the repo-owned ZDOTDIR `~/.zshenv`, the generated `settings.json`/plugin lock/zsh wrappers, the `.claude-second-profile`/`.claude-third-profile` dirs, and repo symlinks — never your real `~/.claude` data or the current `~/.zshrc` source-file.
 
+## Antigravity CLI (`agy`)
+
+Google's [Antigravity](https://antigravity.google) CLI (`agy`, a Homebrew cask — see `Brewfile`) stores its config at `~/.gemini/antigravity-cli/settings.json`. `install_agy_settings` in `install.sh` (Darwin-only, called from `main`) jq-merges `agy-settings.overrides.json` onto that file rather than symlinking it wholesale, because the live file also carries state the app itself writes (`trustedWorkspaces`, `gcp.project`) that a straight overwrite would destroy. The overrides turn off telemetry/crash-log streaming (`enableTelemetry`) and the non-essential AI nudges (`showFeedbackSurvey`, `showTips`, `notifications`) — same policy as the rtk/Claude telemetry opt-outs above. To change the policy, edit `agy-settings.overrides.json` and re-run `./install.sh`.
+
 ## Git Hooks
 
 - `post-checkout` — Copies `.env` from main worktree to new worktrees (for `git worktree add`)

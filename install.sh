@@ -420,6 +420,23 @@ install_node_tools() {
   done
 }
 
+# Antigravity CLI (`agy`, Google's agentic dev tool) settings: telemetry off,
+# no extraneous AI nudges (tips banner/feedback surveys/notifications) — same
+# policy as the rtk/Claude telemetry opt-outs elsewhere in this repo. Merged
+# in-place with jq rather than symlinked, because the live file also carries
+# state the app itself writes (trustedWorkspaces, gcp.project) that a
+# straight overwrite would destroy. Homebrew-cask-only (see Brewfile), so
+# Darwin-gated like rtk.
+install_agy_settings() {
+  local dst="$HOME/.gemini/antigravity-cli/settings.json"
+  mkdir -p "$(dirname "$dst")"
+  local current="{}"
+  [ -f "$dst" ] && current="$(cat "$dst")"
+  jq -s '.[0] * .[1]' <(echo "$current") "$DOTFILES/agy-settings.overrides.json" > "$dst.tmp" \
+    && mv "$dst.tmp" "$dst"
+  echo "SET   $dst <- agy-settings.overrides.json"
+}
+
 # When sourced (e.g. by tests that want a single function), stop here so only
 # the function definitions above load and none of the install steps below run.
 [ "${BASH_SOURCE[0]}" != "${0}" ] && return 0
@@ -488,6 +505,9 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Quarterly AI-landscape-refresh reminder agent (self-skips without the vault)
   install_quarterly_landscape_agent
+
+  # Antigravity CLI (agy) settings: telemetry + tips/surveys off
+  install_agy_settings
 fi
 
 # Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard
