@@ -72,6 +72,12 @@ To clean up artifacts an older (pre-scoped) `install.sh` left on a Linux box, ru
 
 Google's [Antigravity](https://antigravity.google) CLI (`agy`, a Homebrew cask — see `Brewfile`) stores its config at `~/.gemini/antigravity-cli/settings.json`. `install_agy_settings` in `install.sh` (Darwin-only, called from `main`) jq-merges `agy-settings.overrides.json` onto that file rather than symlinking it wholesale, because the live file also carries state the app itself writes (`trustedWorkspaces`, `gcp.project`) that a straight overwrite would destroy. The overrides turn off telemetry/crash-log streaming (`enableTelemetry`) and the non-essential AI nudges (`showFeedbackSurvey`, `showTips`, `notifications`) — same policy as the rtk/Claude telemetry opt-outs above. To change the policy, edit `agy-settings.overrides.json` and re-run `./install.sh`.
 
+## Skills (`skills/`)
+
+`install_skills` in `install.sh` symlinks each `skills/<name>/` into `~/.claude/skills/` (append-only; real dirs are left alone). User-invoked skills ship with `disable-model-invocation: true`. Of note:
+
+- `claude-md-migrate` — `/claude-md-migrate [opus-5|opus-5.5] [path…] [--dry-run|--apply]`. Audits `CLAUDE.md`/`AGENTS.md` (and their `@imports`) against Anthropic's Opus 5 / 5.5 prompting guides and proposes edits. The rules live in `skills/claude-md-migrate/reference.md` (remove explicit verification / "think step by step" rules, add conciseness, progress-cadence, scope and delegation blocks, etc.); API-only knobs (effort, subagent caps) are redirected to `providers.json`/`settings.base.json` rather than written into prose. It follows symlinks to the repo source and never edits the generated `~/.claude/CLAUDE.md`. Re-fetch the guides and update `reference.md` when a new model ships.
+
 ## Git Hooks
 
 - `post-checkout` — Copies `.env` from main worktree to new worktrees (for `git worktree add`)
