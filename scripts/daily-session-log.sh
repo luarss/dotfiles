@@ -7,11 +7,12 @@
 # in cron: it needs a model to summarize a conversation and it confirms before
 # writing. So this script keeps the deterministic parts in shell (which sessions,
 # dedup, weekly-note resolution, git, push) and delegates ONLY the summary of each
-# session to the Gemini API — one call per session, mirroring /done. (Claude's
-# subscription OAuth can't refresh from a launchd job, so a first-party `claude -p`
-# isn't viable here; the Gemini REST API uses a static GEMINI_API_KEY instead.)
+# session to the local `agy` agent CLI in non-interactive print mode (`agy -p`) —
+# one call per session, mirroring /done. agy carries its own cached auth (no
+# per-job API key to manage) and reports token usage as structured JSON, which
+# feeds the cost audit below.
 #
-# NOTE: session transcripts are sent to Google's Gemini endpoint to be summarized.
+# NOTE: session transcripts are sent to agy's backing Gemini model to be summarized.
 #
 # Safety: all git work happens in a throwaway detached `git worktree`, so the
 # user's real ~/work/notes checkout (branch, working tree) is never touched. The
@@ -20,10 +21,11 @@
 #
 # Env knobs (all optional):
 #   SESSION_LOG_DRY_RUN=1    do everything except push; print what would happen
-#   SESSION_LOG_MODEL=...     Gemini model (default: gemini-3.6-flash)
+#   SESSION_LOG_MODEL=...     agy model (default: gemini-3.6-flash)
+#   SESSION_LOG_EFFORT=...    agy reasoning effort: low|medium|high (default: low)
 #   SESSION_LOG_NOTES_REPO    override notes repo (default: ~/work/notes)
 #   SESSION_LOG_WORK_ROOT     override work root (default: ~/work)
-#   SESSION_LOG_ENV           env file providing GEMINI_API_KEY (default: ~/work/dotfiles/.env)
+#   SESSION_LOG_ENV           optional env file to source (default: ~/work/dotfiles/.env)
 #   SESSION_LOG_PRICE_IN      $/1M input tokens for the cost audit (default: 0.10)
 #   SESSION_LOG_PRICE_OUT     $/1M output tokens for the cost audit (default: 0.40)
 
@@ -32,7 +34,8 @@
 # keeps launchd working while letting tests inject stub binaries.
 export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-# Load GEMINI_API_KEY (and friends) from the dotfiles .env, mirroring install.sh.
+# Source the dotfiles .env if present (agy uses its own cached auth, so no API key
+# is required here — this is kept only for any incidental env agy may read).
 ENV_FILE="${SESSION_LOG_ENV:-$HOME/work/dotfiles/.env}"
 [ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
 
@@ -44,6 +47,7 @@ WATERMARK="$HOME/.claude/.daily-session-log.watermark"
 LOCKDIR="$HOME/.claude/.daily-session-log.lock"
 DRY_RUN="${SESSION_LOG_DRY_RUN:-0}"
 GEMINI_MODEL="${SESSION_LOG_MODEL:-gemini-3.6-flash}"
+AGY_EFFORT="${SESSION_LOG_EFFORT:-low}"
 TODAY="$(date +%Y-%m-%d)"
 
 # Cost/usage audit trail — one JSONL line per API call, plus a run-summary line.
@@ -70,10 +74,9 @@ calc_cost() { awk -v i="$1" -v o="$2" -v pi="$PRICE_IN" -v po="$PRICE_OUT" \
   'BEGIN{printf "%.6f", i/1e6*pi + o/1e6*po}'; }
 
 # --- preconditions -----------------------------------------------------------
-for bin in curl jq git; do
+for bin in agy jq git; do
   command -v "$bin" >/dev/null 2>&1 || die "$bin not found on PATH"
 done
-[ -n "${GEMINI_API_KEY:-}" ] || die "GEMINI_API_KEY not set (add it to $ENV_FILE)"
 [ -d "$NOTES_REPO/.git" ] || die "notes repo not a git checkout: $NOTES_REPO"
 [ -d "$PROJECTS_DIR" ] || { log "no projects dir; nothing to do"; exit 0; }
 
@@ -187,23 +190,29 @@ for sf in "${sessions[@]}"; do
   fi
 
   log "summarizing $sid8 ($label)…"
-  # jq builds the request so the prompt+transcript are safely JSON-escaped.
-  # maxOutputTokens is generous because current Gemini flash models are "thinking"
-  # models — internal reasoning draws from this same budget, so a tight cap
-  # truncates the visible bullets on large sessions. Output tokens are cheap.
-  req="$(jq -n --arg p "$SUMMARY_PROMPT" --arg tr "$transcript" \
-    '{contents:[{parts:[{text: ($p + "\n" + $tr)}]}], generationConfig:{temperature:0.2, maxOutputTokens:2048}}')"
-  resp="$(printf '%s' "$req" | curl -sS --max-time 120 -X POST \
-    "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
-    -H "x-goog-api-key: ${GEMINI_API_KEY}" -H 'Content-Type: application/json' \
-    -d @- 2>>"$SCRATCH/curl.err" || true)"
-  raw="$(printf '%s' "$resp" | jq -r '.candidates[0].content.parts[]?.text // empty' 2>/dev/null)"
-  err="$(printf '%s' "$resp" | jq -r '.error.message // empty' 2>/dev/null)"
+  # Delegate the summary to the local `agy` agent CLI in non-interactive print mode.
+  # The prompt+transcript go in as a single --print argument (well under ARG_MAX);
+  # --output-format json returns the response text plus a usage block for the cost
+  # audit. --disable-slash-commands stops any "/..." text in the transcript from
+  # being treated as a slash command. The prompt is pure text so no tools are
+  # invoked, keeping the run non-interactive.
+  resp="$(agy --print="${SUMMARY_PROMPT}
+${transcript}" \
+    --output-format json --model "$GEMINI_MODEL" --effort "$AGY_EFFORT" \
+    --print-timeout 120s --disable-slash-commands \
+    2>>"$SCRATCH/agy.err" || true)"
+  status="$(printf '%s' "$resp" | jq -r '.status // empty' 2>/dev/null)"
+  raw="$(printf '%s' "$resp" | jq -r '.response // empty' 2>/dev/null)"
+  err="$(printf '%s' "$resp" | jq -r '.error // empty' 2>/dev/null)"
 
-  # Token usage for the audit (from usageMetadata; 0 when the call errored).
-  u_in="$(printf '%s' "$resp" | jq -r '.usageMetadata.promptTokenCount // 0' 2>/dev/null)"; u_in="${u_in:-0}"
-  u_total="$(printf '%s' "$resp" | jq -r '.usageMetadata.totalTokenCount // 0' 2>/dev/null)"; u_total="${u_total:-0}"
-  u_out=$(( u_total > u_in ? u_total - u_in : 0 ))
+  # Token usage for the audit (from agy's usage block; 0 when the call errored).
+  # Gemini bills thinking tokens as output, so fold thinking into the output count;
+  # total_tokens already includes them, so u_in + u_out == u_total holds.
+  u_in="$(printf '%s' "$resp" | jq -r '.usage.input_tokens // 0' 2>/dev/null)"; u_in="${u_in:-0}"
+  u_think="$(printf '%s' "$resp" | jq -r '.usage.thinking_tokens // 0' 2>/dev/null)"; u_think="${u_think:-0}"
+  u_out="$(printf '%s' "$resp" | jq -r '.usage.output_tokens // 0' 2>/dev/null)"; u_out="${u_out:-0}"
+  u_out=$(( u_out + u_think ))
+  u_total="$(printf '%s' "$resp" | jq -r '.usage.total_tokens // 0' 2>/dev/null)"; u_total="${u_total:-0}"
   call_cost="$(calc_cost "$u_in" "$u_out")"
 
   # Keep only bullet lines; guards against any stray preamble the model emits.
@@ -215,17 +224,18 @@ for sf in "${sessions[@]}"; do
 
   # Record EVERY API call: one JSONL line with session id, tokens, and cost.
   audit "$(jq -nc --arg ts "$(now)" --arg session "$sid" --arg label "$label" \
-    --arg model "$GEMINI_MODEL" --argjson in "$u_in" --argjson out "$u_out" --argjson total "$u_total" \
+    --arg model "$GEMINI_MODEL" --arg effort "$AGY_EFFORT" \
+    --argjson in "$u_in" --argjson out "$u_out" --argjson total "$u_total" \
     --arg cost "$call_cost" --argjson logged "$loggable" --argjson dry "$DRY_JSON" --arg error "$err" \
-    '{ts:$ts, type:"call", session:$session, label:$label, model:$model,
+    '{ts:$ts, type:"call", session:$session, label:$label, model:$model, effort:$effort,
       input_tokens:$in, output_tokens:$out, total_tokens:$total,
       est_cost_usd:($cost|tonumber), logged:$logged, dry_run:$dry}
      + (if $error == "" then {} else {error:$error} end)')"
   calls_made=$((calls_made + 1))
   sum_in=$((sum_in + u_in)); sum_out=$((sum_out + u_out)); sum_total=$((sum_total + u_total))
 
-  if [ -z "$raw" ]; then
-    log "skip $sid8 ($label): Gemini returned no text${err:+ — $err}"
+  if [ "$status" != "SUCCESS" ] || [ -z "$raw" ]; then
+    log "skip $sid8 ($label): agy returned no summary${err:+ — $err}"
     continue
   fi
   if [ "$loggable" != true ]; then
@@ -244,11 +254,11 @@ done
 # Run-summary audit line (only when the run actually called the API).
 if [ "$calls_made" -gt 0 ]; then
   run_cost="$(calc_cost "$sum_in" "$sum_out")"
-  audit "$(jq -nc --arg ts "$(now)" --arg model "$GEMINI_MODEL" \
+  audit "$(jq -nc --arg ts "$(now)" --arg model "$GEMINI_MODEL" --arg effort "$AGY_EFFORT" \
     --argjson calls "$calls_made" --argjson logged "${#blocks[@]}" \
     --argjson in "$sum_in" --argjson out "$sum_out" --argjson total "$sum_total" \
     --arg pin "$PRICE_IN" --arg pout "$PRICE_OUT" --arg cost "$run_cost" --argjson dry "$DRY_JSON" \
-    '{ts:$ts, type:"run", model:$model, api_calls:$calls, sessions_logged:$logged,
+    '{ts:$ts, type:"run", model:$model, effort:$effort, api_calls:$calls, sessions_logged:$logged,
       input_tokens:$in, output_tokens:$out, total_tokens:$total,
       price_per_M_in:($pin|tonumber), price_per_M_out:($pout|tonumber),
       est_cost_usd:($cost|tonumber), dry_run:$dry}')"

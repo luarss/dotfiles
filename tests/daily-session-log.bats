@@ -2,8 +2,9 @@
 # Tests for scripts/daily-session-log.sh
 #
 # All external services are stubbed so these run offline:
-#   - curl  -> a stub that emits a canned Gemini generateContent response
-#              (bullets from $STUB_BULLETS, default one concrete bullet).
+#   - agy   -> a stub that emits a canned `agy --print` JSON response
+#              (bullets from $STUB_BULLETS, default one concrete bullet;
+#              $STUB_STATUS/$STUB_ERROR drive the error path).
 #   - gh    -> a stub that records `pr create`/`pr view` calls to a file.
 #   - git   -> real; pushes go to a local bare "origin", so the full
 #              worktree/commit/push path exercises without network.
@@ -18,20 +19,28 @@ setup() {
   export HOME="$ROOT/home"
   mkdir -p "$HOME/.claude/projects"
 
-  # Stub bin dir, put first on PATH so it wins over real curl/gh.
+  # Stub bin dir, put first on PATH so it wins over real agy/gh.
   BIN="$ROOT/bin"; mkdir -p "$BIN"
   CALLS="$ROOT/gh-calls.log"; : > "$CALLS"
 
-  cat > "$BIN/curl" <<EOF
+  cat > "$BIN/agy" <<EOF
 #!/usr/bin/env bash
-# Ignore all args/stdin; emit a canned Gemini response with usageMetadata so the
-# cost-audit path is exercised (1000 prompt + 100 output = 1100 total tokens).
+# Ignore all args; emit a canned \`agy --print\` JSON response with a usage block so
+# the cost-audit path is exercised (1000 input + 100 output = 1100 total tokens).
+# STUB_STATUS=ERROR (with STUB_ERROR) exercises the error/skip path.
 bullets="\${STUB_BULLETS:-- did a concrete thing in foo.py:10}"
-jq -n --arg t "\$bullets" \\
-  '{candidates:[{content:{parts:[{text:\$t}]}}],
-    usageMetadata:{promptTokenCount:1000, candidatesTokenCount:100, totalTokenCount:1100}}'
+status="\${STUB_STATUS:-SUCCESS}"
+if [ "\$status" = "SUCCESS" ]; then
+  jq -nc --arg t "\$bullets" \\
+    '{conversation_id:"c1", status:"SUCCESS", response:\$t, error:"",
+      usage:{input_tokens:1000, output_tokens:100, thinking_tokens:0, cache_read_tokens:0, total_tokens:1100}}'
+else
+  jq -nc --arg e "\${STUB_ERROR:-boom}" \\
+    '{conversation_id:"", status:"ERROR", response:"", error:\$e,
+      usage:{input_tokens:0, output_tokens:0, thinking_tokens:0, cache_read_tokens:0, total_tokens:0}}'
+fi
 EOF
-  chmod +x "$BIN/curl"
+  chmod +x "$BIN/agy"
 
   cat > "$BIN/gh" <<EOF
 #!/usr/bin/env bash
@@ -72,8 +81,7 @@ EOF
   git -C "$NOTES" remote set-head origin main
   export SESSION_LOG_NOTES_REPO="$NOTES"
 
-  # Auth + isolation from the real ~/work/dotfiles/.env.
-  export GEMINI_API_KEY="test-key"
+  # Isolate from the real ~/work/dotfiles/.env (agy uses its own cached auth).
   export SESSION_LOG_ENV="$ROOT/nonexistent.env"
   export TZ=UTC
 }
@@ -131,11 +139,17 @@ teardown() { rm -rf "$ROOT"; }
   [ ! -s "$ROOT/gh-calls.log" ]
 }
 
-@test "missing GEMINI_API_KEY fails fast with a clear message" {
-  unset GEMINI_API_KEY
+@test "an agy error is skipped (no commit) but still records a cost line" {
+  export STUB_STATUS=ERROR
+  export STUB_ERROR="model unavailable"
   run bash "$SCRIPT"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"GEMINI_API_KEY not set"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agy returned no summary"* ]]
+  [[ "$output" == *"model unavailable"* ]]
+  [ ! -s "$ROOT/gh-calls.log" ]
+  local costlog="$SESSION_LOG_NOTES_REPO/logs/session-log-costs.jsonl"
+  run jq -r 'select(.type=="call") | "\(.logged) \(.error)"' "$costlog"
+  [ "$output" = "false model unavailable" ]
 }
 
 @test "a session with no loggable work is skipped (no commit)" {

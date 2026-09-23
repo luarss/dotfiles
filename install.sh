@@ -159,7 +159,7 @@ install_plugin_lock() {
 # Weekday-9am launchd agent that runs scripts/daily-session-log.sh — logs each
 # Claude Code session under ~/work into the latest weekly note and opens a PR.
 # Work-machine only (like the skill-scan guard), and only when a ~/work/notes git
-# checkout exists; the script itself self-guards on GEMINI_API_KEY and the repo.
+# checkout exists; the script itself self-guards on the agy binary and the repo.
 install_session_log_agent() {
   if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
     echo "SKIP  daily-session-log agent (non-work machine)"
