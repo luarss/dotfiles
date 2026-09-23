@@ -528,7 +528,7 @@ else
   echo "SKIP  trivy DB pre-warm (non-work machine)"
 fi
 
-# SwiftBar productivity widget (menu-bar: today's git activity + Claude usage).
+# SwiftBar productivity widget (menu-bar: today's git activity + Claude & Antigravity usage).
 # Work machine only — the plugin scans ~/work repos and ccusage, which only make
 # sense here. macOS only (SwiftBar is a mac cask). Symlinks the plugin into
 # ~/.config/swiftbar and points SwiftBar's plugin dir at it.

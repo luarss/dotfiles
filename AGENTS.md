@@ -124,7 +124,7 @@ actual=$(git -C "$plugin_dir" rev-parse HEAD)
 Pinned: `zsh-users/zsh-autosuggestions` v0.7.1, `zsh-users/zsh-syntax-highlighting` 0.8.0
 
 **npm CLI tools** (`tools/`, installed by `install_node_tools` in `install.sh`) — exact versions in `tools/package.json`; the committed lockfile carries sha512 integrity pins verified by `npm ci`. Binaries are symlinked into `~/.local/bin` — never alias to `npx <pkg>`. To bump: edit `tools/package.json`, `npm install --package-lock-only`, commit, re-run `./install.sh`.
-Pinned: `ccusage` 20.0.9
+Pinned: `ccusage` 20.0.24
 
 **Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor. `trivy` (the work-laptop skill-scan scanner) rides this same channel — no per-invocation fetch, unlike the `uvx`-delivered scanner it replaced.
 

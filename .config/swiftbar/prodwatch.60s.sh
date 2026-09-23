@@ -1,5 +1,5 @@
 #!/bin/bash
-# SwiftBar productivity widget: today's git activity + Claude usage.
+# SwiftBar productivity widget: today's git activity + Claude/Antigravity usage.
 # Refreshes every 60s (filename ".60s."). Deliberately lightweight: one git
 # pass per repo, one node call, active repos only.
 export PATH="/opt/homebrew/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
@@ -14,7 +14,7 @@ PROJ_AUTHOR="song.luar@a5x.ai\|luarss@users.noreply.github.com"
 
 # Kick off ccusage (the slow half) in the background so it overlaps the git scan.
 USAGE_RAW="$(mktemp)"
-( ccusage daily --json --since "$(date +%Y%m%d)" >"$USAGE_RAW" 2>/dev/null ) &
+( ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$USAGE_RAW" 2>/dev/null ) &
 USAGE_PID=$!
 
 # --- Git: scan a base dir; one numstat pass per repo, count commits + sum lines.
@@ -41,20 +41,52 @@ proj_commits=$g_commits; proj_add=$g_add; proj_del=$g_del; proj_rows=$g_rows
 
 total_commits=$((work_commits + proj_commits))
 
-# --- Claude usage today: one node call returns "cost<TAB>htok<TAB>models" ---
+# --- Claude & Antigravity usage today: one node call returns tab-delimited metrics ---
 wait "$USAGE_PID" 2>/dev/null
-read -r cost htok models < <(node -e '
+read -r tot_cost tot_htok c_cost c_htok c_models a_cost a_htok a_models < <(node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-  try{const t=JSON.parse(s).daily?.slice(-1)[0];
-    if(!t){console.log("0\t0\t-");return;}
-    const n=t.totalTokens||0;
-    const h=n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(0)+"k":""+n;
-    const m=(t.modelsUsed||[]).map(x=>x.replace(/claude-|-\d.*$/g,"")).join(",")||"-";
-    console.log(t.totalCost.toFixed(2)+"\t"+h+"\t"+m);
-  }catch(e){console.log("0\t0\t-");}
+  try{
+    const json=JSON.parse(s);
+    const t=json.daily?.slice(-1)[0];
+    if(!t){console.log("0.00\t0\t0.00\t0\t-\t0.00\t0\t-");return;}
+    const fmtTok = n => {
+      n = Number(n) || 0;
+      return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "k" : "" + n;
+    };
+    const cleanModels = list => {
+      const cleaned = (list || [])
+        .map(x => x.replace(/^(claude|gemini)-/, "").replace(/-\d{8}$/, ""))
+        .filter(Boolean);
+      return [...new Set(cleaned)].join(",") || "-";
+    };
+
+    const agents = Array.isArray(t.agents) ? t.agents : [];
+    let c = agents.find(x => x.agent === "claude" || x.agent?.toLowerCase() === "claude");
+    let a = agents.find(x => x.agent === "antigravity" || x.agent?.toLowerCase() === "antigravity");
+
+    if (!c && !a && t.metadata?.agents) {
+      if (t.metadata.agents.includes("claude") && !t.metadata.agents.includes("antigravity")) c = t;
+      else if (t.metadata.agents.includes("antigravity") && !t.metadata.agents.includes("claude")) a = t;
+    }
+
+    const cCost = Number(c?.totalCost || 0).toFixed(2);
+    const cTok = fmtTok(c?.totalTokens);
+    const cModels = cleanModels(c?.modelsUsed);
+
+    const aCost = Number(a?.totalCost || 0).toFixed(2);
+    const aTok = fmtTok(a?.totalTokens);
+    const aModels = cleanModels(a?.modelsUsed);
+
+    const totCost = Number(t.totalCost || 0).toFixed(2);
+    const totTok = fmtTok(t.totalTokens);
+
+    console.log([totCost, totTok, cCost, cTok, cModels, aCost, aTok, aModels].join("\t"));
+  }catch(e){console.log("0.00\t0\t0.00\t0\t-\t0.00\t0\t-");}
 });' 2>/dev/null < "$USAGE_RAW")
 rm -f "$USAGE_RAW"
-cost="${cost:-0}"; htok="${htok:-0}"
+tot_cost="${tot_cost:-0.00}"; tot_htok="${tot_htok:-0}"
+c_cost="${c_cost:-0.00}"; c_htok="${c_htok:-0}"; c_models="${c_models:--}"
+a_cost="${a_cost:-0.00}"; a_htok="${a_htok:-0}"; a_models="${a_models:--}"
 
 # --- Render a "base<TAB>commits<TAB>add<TAB>del" repo table under a heading ---
 print_section() {
@@ -71,14 +103,16 @@ print_section() {
 }
 
 # ================= SwiftBar output =================
-echo "⚡ ${total_commits}cmmt · \$${cost} · ${htok} | font=Menlo size=13"
+echo "⚡ ${total_commits}cmmt · \$${tot_cost} · ${tot_htok} | font=Menlo size=13"
 echo "---"
 print_section "Work today" "$WORK" "$work_commits" "$work_add" "$work_del" "$work_rows"
 echo "---"
 print_section "Projects today" "$PROJECTS" "$proj_commits" "$proj_add" "$proj_del" "$proj_rows"
 echo "---"
-echo "Claude today · \$${cost} · ${htok} tok | font=Menlo"
-[ "$models" != "-" ] && echo "models: ${models} | font=Menlo size=12 color=gray"
+echo "Claude today · \$${c_cost} · ${c_htok} tok | font=Menlo"
+[ "$c_models" != "-" ] && echo "models: ${c_models} | font=Menlo size=12 color=gray"
+echo "Antigravity today · \$${a_cost} · ${a_htok} tok | font=Menlo"
+[ "$a_models" != "-" ] && echo "models: ${a_models} | font=Menlo size=12 color=gray"
 echo "github.com/luarss | font=Menlo size=12 href=https://github.com/luarss"
 echo "---"
 echo "Updated $(date +%H:%M) | size=11 color=gray"
