@@ -338,6 +338,68 @@ PLIST
   fi
 }
 
+# Weekday-8am launchd agent that sweeps checked-off ("- [x]") items out of
+# the vault's reading-queue.md — checking an item is the reject signal, this
+# is the cron that acts on it. Runs scripts/reading-queue-cleanup.sh —
+# deterministic, offline, no connectors; the script self-guards on the queue
+# file and is idempotent (no-op when nothing is checked).
+install_reading_queue_cleanup_agent() {
+  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+    echo "SKIP  reading-queue-cleanup agent (non-work machine)"
+    return 0
+  fi
+  if [ ! -f "$HOME/work/notes/reading-queue.md" ]; then
+    echo "SKIP  reading-queue-cleanup agent (no vault reading-queue.md)"
+    return 0
+  fi
+  local label="com.$(id -un).reading-queue-cleanup"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local script="$DOTFILES/scripts/reading-queue-cleanup.sh"
+  local logdir="$HOME/.claude/logs"
+  mkdir -p "$HOME/Library/LaunchAgents" "$logdir"
+
+  # Five StartCalendarInterval entries (Weekday 1..5 = Mon..Fri) at 08:00.
+  local weekdays=""
+  local d
+  for d in 1 2 3 4 5; do
+    weekdays+="    <dict><key>Weekday</key><integer>$d</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+"
+  done
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$script</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+$weekdays  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>$logdir/reading-queue-cleanup.log</string>
+  <key>StandardErrorPath</key><string>$logdir/reading-queue-cleanup.log</string>
+</dict>
+</plist>
+PLIST
+  echo "GEN   $plist"
+
+  launchctl unload "$plist" 2>/dev/null || true
+  if launchctl load -w "$plist" 2>/dev/null; then
+    echo "LOAD  $label (weekdays 08:00)"
+  else
+    echo "WARN  could not launchctl load $label — load it manually"
+  fi
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -505,6 +567,9 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Quarterly AI-landscape-refresh reminder agent (self-skips without the vault)
   install_quarterly_landscape_agent
+
+  # Weekday-8am reading-queue cleanup agent (self-skips without the vault)
+  install_reading_queue_cleanup_agent
 
   # Antigravity CLI (agy) settings: telemetry + tips/surveys off
   install_agy_settings
