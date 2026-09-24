@@ -11,8 +11,10 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `.zshrc` — Main zsh config: Oh My Zsh with `robbyrussell` theme, plugins (`git`, `zsh-autosuggestions`, `zsh-syntax-highlighting`); sources the generated N-Claude profile wrappers
 - `install.sh` — Bootstrap script that symlinks dotfiles and generates per-profile configs
 - `providers.json` — **Single source of truth** for Claude profiles: one entry per provider (dir, aliases, token env var, base URL, model map, freeform settings `overrides`)
-- `settings.base.json` — Shared `settings.json` content for every profile (deny list, hooks, status line, plugins, attribution)
-- `gen-settings.jq` — jq program that layers `settings.base.json` + a provider's env/overrides into a final `settings.json`
+- `file-permissions.json` — **Single source of truth** for allowed/denied files and security boundaries across Claude Code, Antigravity CLI, and Antigravity 2.0 Desktop
+- `gen-permissions.jq` — jq library and CLI filter compiling `file-permissions.json` into engine-specific formats
+- `settings.base.json` — Shared `settings.json` content for every profile (hooks, status line, plugins, attribution)
+- `gen-settings.jq` — jq program that layers `settings.base.json` + `file-permissions.json` + a provider's env/overrides into a final `settings.json`
 
 - `.claude/`, `.claude-second-profile/`, `.claude-third-profile/` — Per-profile dirs (`CLAUDE.md`, hooks, etc.). Their `settings.json` is **generated**, not committed. The default `.claude/` profile also ships `RTK.md` (rtk meta-command reference).
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
@@ -68,9 +70,19 @@ On macOS the script symlinks dotfiles into `$HOME`, generates every profile's `s
 
 To clean up artifacts an older (pre-scoped) `install.sh` left on a Linux box, run `scripts/reset-linux.sh` there (dry run by default; `-f` to remove). It deletes only the repo-owned ZDOTDIR `~/.zshenv`, the generated `settings.json`/plugin lock/zsh wrappers, the `.claude-second-profile`/`.claude-third-profile` dirs, and repo symlinks — never your real `~/.claude` data or the current `~/.zshrc` source-file.
 
-## Antigravity CLI (`agy`)
+## Antigravity (CLI & 2.0 Desktop App)
 
-Google's [Antigravity](https://antigravity.google) CLI (`agy`, a Homebrew cask — see `Brewfile`) stores its config at `~/.gemini/antigravity-cli/settings.json`. `install_agy_settings` in `install.sh` (Darwin-only, called from `main`) jq-merges `agy-settings.overrides.json` onto that file rather than symlinking it wholesale, because the live file also carries state the app itself writes (`trustedWorkspaces`, `gcp.project`) that a straight overwrite would destroy. The overrides turn off telemetry/crash-log streaming (`enableTelemetry`) and the non-essential AI nudges (`showFeedbackSurvey`, `showTips`, `notifications`) — same policy as the rtk/Claude telemetry opt-outs above. To change the policy, edit `agy-settings.overrides.json` and re-run `./install.sh`.
+Google's [Antigravity](https://antigravity.google) operates across two surfaces:
+1. **Antigravity CLI (`agy`)**: Configuration at `~/.gemini/antigravity-cli/settings.json`.
+2. **Antigravity 2.0 Desktop App / IDE**: Global configuration at `~/.gemini/config/config.json`.
+
+`install_agy_settings` and `install_antigravity_desktop_settings` in `install.sh` (Darwin-only, called from `main`) merge security permissions derived from `file-permissions.json` and UI/telemetry overrides from `agy-settings.overrides.json` in-place using jq rather than symlinking wholesale, preserving state written by the applications themselves (`trustedWorkspaces`, `gcp.project`, `autoExecutionPolicy`, `remoteControlHostname`, `themeMode`).
+
+The overrides enforce:
+- Disabling telemetry and crash reporting (`enableTelemetry: false`)
+- Disabling extraneous AI nudges (`showFeedbackSurvey`, `showTips`, `notifications`)
+- Strict gitignore boundaries (`allowAgentAccessGitignoreFiles: false`, etc.)
+- Fine-grained deny/allow file boundaries synchronized with Claude Code.
 
 ## Git Hooks
 
@@ -99,11 +111,16 @@ Three defense-in-depth layers:
 
 **Why a Drive "mirror" folder, not the CloudStorage mount.** The archive dir (`~/work/archives/claude-sessions`, override `CLAUDE_ARCHIVE_DIR`) is a **real local directory** you register in Drive for Desktop as a *mirror* folder. Mirror mode keeps files on a normal local path — outside the TCC-protected `~/Library/CloudStorage/GoogleDrive-…` FileProvider mount — so a background daemon writes to it with **no Full Disk Access** grant (granting FDA to a shared interpreter like `/bin/sh` or `tar` would give every script full-disk read of Mail/Messages/etc. — avoided entirely here). It must be a real dir, **not a symlink**: Drive for Desktop does not sync symlinks (neither a symlinked folder nor symlinks placed inside a synced folder).
 
-- **Install:** `install_session_archive_agent` in `install.sh` `mkdir -p`s the archive dir and generates `~/Library/LaunchAgents/com.<user>.session-archive.plist` (weekdays 09:05, just after the session-log agent) — **work machine only**. Logs to `~/.claude/logs/session-archive.log`. **One-time manual step:** in Google Drive → Preferences → *Google Drive* → *Add folder*, register `~/work/archives/claude-sessions` as a **mirror** folder so it syncs. Skills/hooks are symlinked/copied by the normal install path, so re-run `./install.sh` after editing the hook.
+- **Install:** `install_session_archive_agent` in `install.sh` `mkdir -p`s the archive dir and generates `~/Library/LaunchAgents/com.<user>.session-archive.plist` (weekdays 09:05, just after the session-log agent) — **work machine only**. Logs to `~/.claude/logs/session-archive.log`. **One-time manual step:** in Google Drive → Preferences → *Google Drive* → *Add folder*, register `~/work/archives/claude-sessions` as a **mirror** folder so it syncs. Synced location: https://drive.google.com/drive/u/2/folders/1RRIsRT3jqbWc2tyEnzW5mVZcfdW8BpNR. Skills/hooks are symlinked/copied by the normal install path, so re-run `./install.sh` after editing the hook.
 
 ## Security
 
-Every profile's `settings.json` is generated from `settings.base.json`, which carries the shared deny list blocking destructive `rm` commands and reads of `.env`, SSH/AWS configs, credentials, secrets, key/pem files, and shell/REPL history files (`.zsh_history`, `.bash_history`, `.mysql_history`, `.psql_history`, `fish_history`, etc., which can leak secrets typed on the command line). Edit `settings.base.json` to change the policy for all profiles at once.
+File access boundaries, protected patterns, and command deny lists are centralized in `file-permissions.json` — the **single source of truth** across Claude Code, Antigravity CLI, and Antigravity 2.0 Desktop.
+- **Claude Code**: Compiled into `Read(...)` and `Bash(...)` under `permissions.deny` / `allow`, plus `ignorePatterns`.
+- **Antigravity CLI**: Compiled into `read_file(...)` and `command(...)` under `permissions.deny` / `allow`, plus gitignore boundary flags (`allowAgentAccessGitignoreFiles: false`, etc.).
+- **Antigravity 2.0 Desktop**: Compiled into `read_file(...)` and `command(...)` under `userSettings.globalPermissionGrants`.
+
+The deny list blocks destructive `rm` commands and reads of `.env*`, SSH/AWS/GCP configs, credentials, secrets, key/pem files, database configs (`~/.my.cnf`), and shell/REPL history files (`.zsh_history`, `.bash_history`, `.mysql_history`, `.psql_history`, `fish_history`, etc., which can leak secrets typed on the command line). Edit `file-permissions.json` to change the policy across all tools at once.
 
 `settings.base.json` registers `PreToolUse` hooks (all exit 2 to deny). Three run on the `Bash` matcher, and one (`db-rate-limit.sh`) also runs on an `mcp__.*mysql.*` matcher:
 

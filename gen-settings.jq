@@ -1,10 +1,11 @@
 # Generate a profile's settings.json from the shared base + a provider entry.
 # Inputs (all via --argjson/--arg):
 #   $base  : contents of settings.base.json
+#   $perms : contents of file-permissions.json (optional, defaults to empty object)
 #   $p     : the provider's entry from providers.json
 #   $token : the auth-token value (may be empty string)
 #
-# Layering: base  *  provider env additions  *  freeform overrides.
+# Layering: base * permissions * provider env additions * freeform overrides.
 
 def models_env($m):
   if $m == null then {}
@@ -21,7 +22,36 @@ def models_env($m):
     + (if $m.opus   then { "ANTHROPIC_DEFAULT_OPUS_MODEL":   $m.opus   } else {} end)
   end;
 
+def claude_permissions($p):
+  if $p == null or $p == {} then {}
+  else
+    {
+      permissions: (
+        {
+          deny: (
+            (($p.deny.commands // []) | map("Bash(\(.))"))
+            + (($p.deny.claude_rtk // []) | map("Bash(rtk " + . + ")"))
+            + (($p.deny.files // []) | map("Read(\(.))"))
+          ),
+          defaultMode: "default"
+        }
+        + (if (($p.allow.commands // []) + ($p.allow.files // [])) | length > 0 then
+            {
+              allow: (
+                (($p.allow.commands // []) | map("Bash(\(.))"))
+                + (($p.allow.files // []) | map("Read(\(.))"))
+              )
+            }
+           else {} end)
+      )
+    }
+    + (if ($p.ignorePatterns // []) | length > 0 then
+        { ignorePatterns: $p.ignorePatterns }
+       else {} end)
+  end;
+
 $base
+* claude_permissions($perms // {})
 * { env:
     ( (if $p.token then { "ANTHROPIC_AUTH_TOKEN": $token } else {} end)
       + (if $p.thirdParty then {

@@ -19,8 +19,10 @@ and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
 
 - `.zshrc` — Oh My Zsh config; sources the generated Claude profile wrappers
 - `providers.json` — single source of truth for Claude profiles
+- `file-permissions.json` — single source of truth for allowed/denied files across Claude Code, Antigravity CLI, and Antigravity 2.0 Desktop
+- `gen-permissions.jq` — multi-target permissions generator
 - `settings.base.json` — shared `settings.json` content for every profile
-- `gen-settings.jq` — layers base + provider into each profile's `settings.json`
+- `gen-settings.jq` — layers base + permissions + provider into each profile's `settings.json`
 - `install.sh` — bootstrap script
 - `.githooks/` — git hooks (`core.hooksPath`)
 - `.config/swiftbar/prodwatch.60s.sh` — SwiftBar menu-bar widget (today's git

@@ -1,0 +1,97 @@
+{
+  "deny": {
+    "files": [
+      ".env",
+      "**/.env",
+      ".env.local",
+      "**/.env.local",
+      ".env.production",
+      "**/.env.production",
+      "~/.ssh/id_*",
+      "~/.ssh/*_rsa",
+      "~/.ssh/*_dsa",
+      "~/.ssh/*_ecdsa",
+      "~/.ssh/*_ed25519",
+      "~/.ssh/*key*",
+      "~/.ssh/config",
+      "~/.ssh/config.d/**",
+      "~/.ssh/authorized_keys*",
+      "~/.aws/**",
+      "~/.config/gcloud/**",
+      "~/.hermes/config.yaml",
+      "~/.hermes/auth.json",
+      "~/.hermes/mcp-tokens/**",
+      "~/.hermes/*_token.json",
+      "~/.hermes/channel_directory.json",
+      "~/.hermes/gateway_state.json",
+      "**/*.secret",
+      "**/*_secret.*",
+      "**/*-secret.*",
+      "**/secrets.json",
+      "**/secrets.yaml",
+      "**/secrets.yml",
+      "**/*key.pem",
+      "**/*-key.pem",
+      "**/*_key.pem",
+      "**/privkey*.pem",
+      "**/*private*.pem",
+      "**/id_*.pem",
+      "**/*.key",
+      "~/.my.cnf",
+      "**/.my.cnf",
+      "**/my.cnf",
+      "~/.zsh_history",
+      "**/.zsh_history",
+      "~/.bash_history",
+      "**/.bash_history",
+      "~/.sh_history",
+      "**/.sh_history",
+      "~/.zhistory",
+      "**/.zhistory",
+      "~/.history",
+      "**/.history",
+      "~/.python_history",
+      "**/.python_history",
+      "~/.node_repl_history",
+      "**/.node_repl_history",
+      "~/.mysql_history",
+      "**/.mysql_history",
+      "~/.psql_history",
+      "**/.psql_history",
+      "~/.local/share/fish/fish_history",
+      "**/fish_history"
+    ],
+    "commands": [
+      "rm -rf:*",
+      "rm -fr:*"
+    ],
+    "claude_rtk": [
+      "*.env",
+      "*.pem*",
+      "*.key*",
+      "*.cnf*",
+      "*.ssh/*",
+      "*.aws/*",
+      "*.config/gcloud/*",
+      "*.zsh_history*",
+      "*.bash_history*",
+      "*.sh_history*",
+      "*.zhistory*",
+      "*.history*"
+    ]
+  },
+  "allow": {
+    "files": [],
+    "commands": [
+      "ccusage"
+    ]
+  },
+  "ignorePatterns": [
+    "bazel-*"
+  ],
+  "gitignoreAccess": {
+    "allowAgentAccessGitignoreFiles": false,
+    "allowTabAccessGitignoreFiles": false,
+    "allowCascadeAccessGitignoreFiles": false
+  }
+}

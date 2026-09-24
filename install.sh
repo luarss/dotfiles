@@ -61,7 +61,10 @@ setup_zsh_config() {
 generate_profiles() {
   local only="${1:-}"
   local manifest="$DOTFILES/providers.json"
-  local base; base="$(cat "$DOTFILES/settings.base.json")"
+  local base perms
+  base="$(cat "$DOTFILES/settings.base.json")"
+  perms="{}"
+  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
   local name
   for name in $(jq -r 'keys[]' "$manifest"); do
     [ -n "$only" ] && [ "$name" != "$only" ] && continue
@@ -88,7 +91,7 @@ generate_profiles() {
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
     ln -sf "$DOTFILES/models.json" "$HOME/$dir/models.json"
     echo "LINK  $HOME/$dir/models.json -> $DOTFILES/models.json"
-    jq -n --argjson base "$base" --argjson p "$pentry" --arg token "$token" \
+    jq -n --argjson base "$base" --argjson perms "$perms" --argjson p "$pentry" --arg token "$token" \
       -f "$DOTFILES/gen-settings.jq" > "$HOME/$dir/settings.json"
     echo "GEN   $HOME/$dir/settings.json ($name)"
   done
@@ -511,6 +514,7 @@ install_zsh_plugin() {
   local expected_sha="$4"
   local zsh_custom="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
   local plugin_dir="$zsh_custom/plugins/$name"
+  [ -n "${DOTFILES_SKIP_ZSH_PLUGINS:-}" ] && { echo "SKIP  zsh plugin $repo (DOTFILES_SKIP_ZSH_PLUGINS set)"; return; }
 
   if [ -d "$plugin_dir/.git" ]; then
     echo "SKIP  $name (already installed)"
@@ -566,9 +570,31 @@ install_agy_settings() {
   mkdir -p "$(dirname "$dst")"
   local current="{}"
   [ -f "$dst" ] && current="$(cat "$dst")"
-  jq -s '.[0] * .[1]' <(echo "$current") "$DOTFILES/agy-settings.overrides.json" > "$dst.tmp" \
+  local perms="{}"
+  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
+  local agy_perms
+  agy_perms="$(jq -n --argjson perms "$perms" --arg target agy_cli -f "$DOTFILES/gen-permissions.jq")"
+  jq -s '.[0] * .[1] * .[2]' <(echo "$current") <(echo "$agy_perms") "$DOTFILES/agy-settings.overrides.json" > "$dst.tmp" \
     && mv "$dst.tmp" "$dst"
-  echo "SET   $dst <- agy-settings.overrides.json"
+  echo "SET   $dst <- agy-settings.overrides.json + file-permissions.json"
+}
+
+# Antigravity 2.0 (Desktop Electron app / IDE) settings:
+# Merges compiled permissions (userSettings.globalPermissionGrants: deny/allow)
+# from file-permissions.json into ~/.gemini/config/config.json, preserving
+# existing user state (autoExecutionPolicy, themeMode, remoteControlHostname, etc.).
+install_antigravity_desktop_settings() {
+  local dst="$HOME/.gemini/config/config.json"
+  mkdir -p "$(dirname "$dst")"
+  local current="{}"
+  [ -f "$dst" ] && current="$(cat "$dst")"
+  local perms="{}"
+  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
+  local desktop_grants
+  desktop_grants="$(jq -n --argjson perms "$perms" --arg target antigravity_desktop -f "$DOTFILES/gen-permissions.jq")"
+  jq -s '.[0] * .[1]' <(echo "$current") <(echo "$desktop_grants") > "$dst.tmp" \
+    && mv "$dst.tmp" "$dst"
+  echo "SET   $dst <- file-permissions.json (globalPermissionGrants)"
 }
 
 # When sourced (e.g. by tests that want a single function), stop here so only
@@ -647,8 +673,11 @@ if [ "$IS_DARWIN" = 1 ]; then
   # Weekday-8am reading-queue cleanup agent (self-skips without the vault)
   install_reading_queue_cleanup_agent
 
-  # Antigravity CLI (agy) settings: telemetry + tips/surveys off
+  # Antigravity CLI (agy) settings: telemetry + tips/surveys off + file permissions
   install_agy_settings
+
+  # Antigravity 2.0 (Desktop Electron app / IDE) settings: global permission grants
+  install_antigravity_desktop_settings
 fi
 
 # Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard

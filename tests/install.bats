@@ -23,6 +23,8 @@ setup() {
 
   # Skip the npm ci for pinned tools (network-dependent, per-test $HOME)
   export DOTFILES_SKIP_NODE_TOOLS=1
+  # Skip zsh plugins clone (network-dependent, per-test $HOME)
+  export DOTFILES_SKIP_ZSH_PLUGINS=1
 
   # Store original environment
   ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
@@ -233,6 +235,14 @@ EOF
   [ "$(jq -r '.showFeedbackSurvey' "$settings")" = "false" ]
   [ "$(jq -r '.showTips' "$settings")" = "false" ]
   [ "$(jq -r '.notifications' "$settings")" = "false" ]
+  # Gitignore access flags applied from file-permissions.json
+  [ "$(jq -r '.allowAgentAccessGitignoreFiles' "$settings")" = "false" ]
+  [ "$(jq -r '.allowTabAccessGitignoreFiles' "$settings")" = "false" ]
+  [ "$(jq -r '.allowCascadeAccessGitignoreFiles' "$settings")" = "false" ]
+  # Deny & allow rules applied from file-permissions.json
+  [ "$(jq -r '.permissions.deny | length' "$settings")" -gt 50 ]
+  [ "$(jq -r '.permissions.deny[0]' "$settings")" = "command(rm -rf)" ]
+  [ "$(jq -r '.permissions.allow[0]' "$settings")" = "command(ccusage)" ]
   # Pre-existing app state untouched
   [ "$(jq -r '.gcp.project' "$settings")" = "some-project" ]
   [ "$(jq -r '.trustedWorkspaces[0]' "$settings")" = "/Users/me/work/repo" ]
@@ -245,6 +255,89 @@ EOF
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/.gemini/antigravity-cli/settings.json" ]
+}
+
+@test "install_antigravity_desktop_settings_merges_grants_and_preserves_user_settings" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+
+  mkdir -p "$HOME/.gemini/config"
+  cat > "$HOME/.gemini/config/config.json" <<'EOF'
+{
+  "userSettings": {
+    "autoExecutionPolicy": "CASCADE_COMMANDS_AUTO_EXECUTION_PROCEED_IN_SANDBOX",
+    "themeMode": "THEME_MODE_INHERIT",
+    "remoteControlHostname": "my-host"
+  }
+}
+EOF
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SET   $HOME/.gemini/config/config.json <- file-permissions.json (globalPermissionGrants)"* ]]
+
+  local config="$HOME/.gemini/config/config.json"
+  # Existing userSettings preserved
+  [ "$(jq -r '.userSettings.autoExecutionPolicy' "$config")" = "CASCADE_COMMANDS_AUTO_EXECUTION_PROCEED_IN_SANDBOX" ]
+  [ "$(jq -r '.userSettings.themeMode' "$config")" = "THEME_MODE_INHERIT" ]
+  [ "$(jq -r '.userSettings.remoteControlHostname' "$config")" = "my-host" ]
+  # Global permission grants applied
+  [ "$(jq -r '.userSettings.globalPermissionGrants.deny | length' "$config")" -gt 50 ]
+  [ "$(jq -r '.userSettings.globalPermissionGrants.deny[0]' "$config")" = "command(rm -rf)" ]
+  [ "$(jq -r '.userSettings.globalPermissionGrants.allow[0]' "$config")" = "command(ccusage)" ]
+}
+
+@test "install_antigravity_desktop_settings_skipped_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/.gemini/config/config.json" ]
+}
+
+@test "permissions_parity_between_claude_and_antigravity" {
+  local dotfiles
+  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
+  local manifest="$dotfiles/file-permissions.json"
+  [ -f "$manifest" ]
+
+  local num_files num_cmds
+  num_files="$(jq '.deny.files | length' "$manifest")"
+  num_cmds="$(jq '.deny.commands | length' "$manifest")"
+
+  # Claude output check
+  local claude_json
+  claude_json="$(jq --arg target claude -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
+  local claude_deny_len
+  claude_deny_len="$(echo "$claude_json" | jq '.permissions.deny | length')"
+
+  # Antigravity CLI output check
+  local agy_json
+  agy_json="$(jq --arg target agy_cli -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
+  local agy_deny_len
+  agy_deny_len="$(echo "$agy_json" | jq '.permissions.deny | length')"
+
+  # Antigravity Desktop output check
+  local desktop_json
+  desktop_json="$(jq --arg target antigravity_desktop -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
+  local desktop_deny_len
+  desktop_deny_len="$(echo "$desktop_json" | jq '.userSettings.globalPermissionGrants.deny | length')"
+
+  # Antigravity CLI and Desktop deny rules must match exactly (files + commands)
+  [ "$agy_deny_len" -eq "$((num_files + num_cmds))" ]
+  [ "$desktop_deny_len" -eq "$((num_files + num_cmds))" ]
+
+  # Claude deny includes files + commands + claude_rtk
+  local num_rtk
+  num_rtk="$(jq '.deny.claude_rtk | length' "$manifest")"
+  [ "$claude_deny_len" -eq "$((num_files + num_cmds + num_rtk))" ]
+
+  # Parity on allow commands
+  [ "$(echo "$claude_json" | jq -r '.permissions.allow[0]')" = "Bash(ccusage)" ]
+  [ "$(echo "$agy_json" | jq -r '.permissions.allow[0]')" = "command(ccusage)" ]
+  [ "$(echo "$desktop_json" | jq -r '.userSettings.globalPermissionGrants.allow[0]')" = "command(ccusage)" ]
 }
 
 @test "setup_zsh_config_symlinks_zshrc_on_macos" {
