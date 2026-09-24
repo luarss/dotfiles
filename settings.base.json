@@ -1,6 +1,7 @@
 {
   "outputStyle": "Concise",
   "promptSuggestionEnabled": false,
+  "cleanupPeriodDays": 365,
   "env": {
     "ENABLE_LSP_TOOL": "1",
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
@@ -112,6 +113,16 @@
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/db-rate-limit.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/archive-session.sh"
           }
         ]
       }

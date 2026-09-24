@@ -400,6 +400,78 @@ PLIST
   fi
 }
 
+# Weekday-morning launchd agent that sweeps Claude Code session transcripts into
+# a dated tarball inside the Google-Drive-mirrored archive dir. This is the batch
+# reconciliation layer; the SessionEnd hook (.claude/hooks/archive-session.sh)
+# is the real-time capture layer. Runs scripts/archive-session-logs.sh —
+# deterministic, offline, append-only, idempotent.
+#
+# The archive dir is a REAL directory the user registers as a Google Drive
+# "mirror" folder (Drive for Desktop does not sync symlinks, so it is created,
+# not symlinked). install.sh creates it here; registering it in Drive settings
+# is a one-time manual step. Writing to a mirror folder needs no Full Disk
+# Access — mirror mode keeps files in a normal local path outside the TCC-
+# protected ~/Library/CloudStorage mount.
+install_session_archive_agent() {
+  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+    echo "SKIP  session-archive agent (non-work machine)"
+    return 0
+  fi
+  local archive_dir="${CLAUDE_ARCHIVE_DIR:-$HOME/work/archives/claude-sessions}"
+  # Create the mirror dir so both the sweep and the SessionEnd hook have a
+  # target. Registering it as a Drive mirror folder is a manual one-time step.
+  mkdir -p "$archive_dir"
+  echo "MKDIR $archive_dir (register as a Google Drive mirror folder)"
+
+  local label="com.$(id -un).session-archive"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local script="$DOTFILES/scripts/archive-session-logs.sh"
+  local logdir="$HOME/.claude/logs"
+  mkdir -p "$HOME/Library/LaunchAgents" "$logdir"
+
+  # Five StartCalendarInterval entries (Weekday 1..5 = Mon..Fri) at 09:05 —
+  # just after the session-log agent (09:00) so both run each weekday morning.
+  local weekdays=""
+  local d
+  for d in 1 2 3 4 5; do
+    weekdays+="    <dict><key>Weekday</key><integer>$d</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
+"
+  done
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$script</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+$weekdays  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>$logdir/session-archive.log</string>
+  <key>StandardErrorPath</key><string>$logdir/session-archive.log</string>
+</dict>
+</plist>
+PLIST
+  echo "GEN   $plist"
+
+  launchctl unload "$plist" 2>/dev/null || true
+  if launchctl load -w "$plist" 2>/dev/null; then
+    echo "LOAD  $label (weekdays 09:05)"
+  else
+    echo "WARN  could not launchctl load $label — load it manually"
+  fi
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -561,6 +633,10 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Weekday-9am session-log launchd agent (self-skips without ~/work/notes)
   install_session_log_agent
+
+  # Weekday-9:05am session-archive launchd agent (tars transcripts into the
+  # Google-Drive-mirrored archive dir; pairs with the SessionEnd hook)
+  install_session_archive_agent
 
   # Wednesday-2pm weekly-note cutover agent (self-skips without the vault tool)
   install_weekly_cutover_agent
