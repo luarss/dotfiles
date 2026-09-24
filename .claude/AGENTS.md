@@ -4,7 +4,7 @@
 
 ### Code Style
 - Prefer **clear, readable** code over clever one-liners
-- Add comments for non-obvious logic, skip for self-documenting code
+- Never add comments to the codebase.
 - Use meaningful variable names; avoid abbreviations unless universally known
 - Keep functions small and focused (single responsibility)
 
