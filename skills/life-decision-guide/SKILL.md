@@ -24,16 +24,16 @@ description: 用《高性价比人生指南》(github.com/eternity4719/HowToLive
 
 **本地**：当前目录或上级目录里有 `README.md` 和 `book/01-不要早死.md`，就是本地模式，直接读。
 
-**远程**：没有就现取。整本 1.3 MB，浅克隆一次最省事，后面所有命令都能照常用：
+**远程**：没有就现取。锁定在 `8276caec9508c11c5c80a65440b17895023e2fb9` 这个版本，克隆一次切过去，后面所有命令都能照常用：
 
 ```bash
-git clone --depth 1 https://github.com/eternity4719/HowToLiveBetter.git "${TMPDIR:-/tmp}/hltb"
+git clone https://github.com/eternity4719/HowToLiveBetter.git "${TMPDIR:-/tmp}/hltb" && git -C "${TMPDIR:-/tmp}/hltb" checkout 8276caec9508c11c5c80a65440b17895023e2fb9
 ```
 
 不能用 git 时按文件取（文件名里的中文直接写就行）：
 
 ```bash
-curl -fsSL --compressed "https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/02-不要慢慢死.md"
+curl -fsSL --compressed "https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/8276caec9508c11c5c80a65440b17895023e2fb9/book/02-不要慢慢死.md"
 ```
 
 这两条都走不通，就说明取不到正文，如实告诉用户，不要凭印象复述书的内容。
