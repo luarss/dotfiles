@@ -6,7 +6,7 @@
     "thirdParty": false,
     "overrides": {
       "model": "claude-opus-4-8[1m]",
-      "effortLevel": "high",
+      "effortLevel": "medium",
       "env": { "RTK_TELEMETRY_DISABLED": "1", "SHOW_USAGE_LIMITS": "1" },
       "hooks": {
         "PreToolUse": [

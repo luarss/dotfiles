@@ -714,12 +714,13 @@ fi
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
 if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
-  jq '.model = "sonnet"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
+  jq '.model = "sonnet" | .effortLevel = "high"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
     && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
-  echo "SET   $HOME/.claude/settings.json model -> sonnet (personal)"
+  echo "SET   $HOME/.claude/settings.json model -> sonnet, effortLevel -> high (personal)"
 else
   manifest_model=$(jq -r '.model' "$HOME/.claude/settings.json")
-  echo "SKIP  sonnet switch (work machine — keeping $manifest_model)"
+  manifest_effort=$(jq -r '.effortLevel' "$HOME/.claude/settings.json")
+  echo "SKIP  sonnet switch (work machine — keeping $manifest_model, effortLevel $manifest_effort)"
 fi
 
 echo "Done."
