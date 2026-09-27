@@ -164,7 +164,7 @@ install_plugin_lock() {
 # Work-machine only (like the skill-scan guard), and only when a ~/work/notes git
 # checkout exists; the script itself self-guards on the agy binary and the repo.
 install_session_log_agent() {
-  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+  if ! is_work_machine; then
     echo "SKIP  daily-session-log agent (non-work machine)"
     return 0
   fi
@@ -228,7 +228,7 @@ PLIST
 # week's file IS the cutover. --next 2 also self-heals a missed Wednesday: a
 # late (post-wake) run still covers the upcoming Wednesday and the one after.
 install_weekly_cutover_agent() {
-  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+  if ! is_work_machine; then
     echo "SKIP  weekly-cutover agent (non-work machine)"
     return 0
   fi
@@ -285,7 +285,7 @@ PLIST
 # scripts/quarterly-landscape-reminder.sh — deterministic, offline, no connectors;
 # the script self-guards on TODO.md and is idempotent per quarter.
 install_quarterly_landscape_agent() {
-  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+  if ! is_work_machine; then
     echo "SKIP  quarterly-landscape agent (non-work machine)"
     return 0
   fi
@@ -347,7 +347,7 @@ PLIST
 # deterministic, offline, no connectors; the script self-guards on the queue
 # file and is idempotent (no-op when nothing is checked).
 install_reading_queue_cleanup_agent() {
-  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+  if ! is_work_machine; then
     echo "SKIP  reading-queue-cleanup agent (non-work machine)"
     return 0
   fi
@@ -416,7 +416,7 @@ PLIST
 # Access — mirror mode keeps files in a normal local path outside the TCC-
 # protected ~/Library/CloudStorage mount.
 install_session_archive_agent() {
-  if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+  if ! is_work_machine; then
     echo "SKIP  session-archive agent (non-work machine)"
     return 0
   fi
@@ -611,9 +611,17 @@ install_antigravity_desktop_settings() {
 IS_DARWIN=0
 [ "$(uname)" = "Darwin" ] && IS_DARWIN=1
 
-# Work-machine detection — gates the skill-scan guard and the personal sonnet switch.
+# Work-machine detection — single source of truth for every work-vs-personal
+# gate in this script (skill-scan guard, sonnet switch, launchd agents, and
+# Brewfile package selection via `install.sh --is-work-machine`).
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
+is_work_machine() { [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; }
+
+if [ "${1:-}" = "--is-work-machine" ]; then
+  is_work_machine
+  exit $?
+fi
 
 setup_zsh_config
 symlink .env.example
@@ -684,7 +692,7 @@ fi
 # (.claude/hooks/skill-scan-guard.sh) so scans run offline at hook time. Trivy
 # needs no token — secret/misconfig scanning is already offline; this just caches
 # the vuln DB locally. Work machine only, and only if trivy is installed.
-if [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; then
+if is_work_machine; then
   if command -v trivy >/dev/null 2>&1; then
     if trivy fs --download-db-only -q >/dev/null 2>&1; then
       echo "OK    trivy vuln DB pre-warmed (skill-scan)"
@@ -702,7 +710,7 @@ fi
 # Work machine only — the plugin scans ~/work repos and ccusage, which only make
 # sense here. macOS only (SwiftBar is a mac cask). Symlinks the plugin into
 # ~/.config/swiftbar and points SwiftBar's plugin dir at it.
-if [ "$IS_DARWIN" = 1 ] && [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; then
+if [ "$IS_DARWIN" = 1 ] && is_work_machine; then
   mkdir -p "$HOME/.config/swiftbar"
   symlink .config/swiftbar/prodwatch.60s.sh
   # SwiftBar's bundle id is com.ameba.SwiftBar; store the plugin dir it watches.
@@ -713,7 +721,7 @@ else
 fi
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
-if [ "$(hostname -s)" != "$WORK_HOSTNAME" ]; then
+if ! is_work_machine; then
   jq '.model = "sonnet" | .effortLevel = "high"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
     && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
   echo "SET   $HOME/.claude/settings.json model -> sonnet, effortLevel -> high (personal)"

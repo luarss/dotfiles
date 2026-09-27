@@ -353,3 +353,24 @@ EOF
   # No .zshenv is ever created (Linux ZDOTDIR path was removed)
   [ ! -e "$HOME/.zshenv" ]
 }
+
+# --is-work-machine is the single source of truth the Brewfile shells out to
+# (via `system`) instead of duplicating the hostname default.
+@test "is_work_machine_flag_exits_1_off_work_machine" {
+  hostname() { echo "personal-macbook-pro"; }
+  export -f hostname
+
+  run bash "$INSTALL_SCRIPT" --is-work-machine
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "is_work_machine_flag_exits_0_on_work_machine" {
+  hostname() { echo "custom-corp-laptop"; }
+  export -f hostname
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+
+  run bash "$INSTALL_SCRIPT" --is-work-machine
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
