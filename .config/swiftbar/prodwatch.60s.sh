@@ -17,6 +17,27 @@ USAGE_RAW="$(mktemp)"
 ( ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$USAGE_RAW" 2>/dev/null ) &
 USAGE_PID=$!
 
+# Kick off GitHub issue counts (network-bound) in the background too. Counts
+# distinct issues opened/closed today where I'm the author OR assignee — four
+# search-API calls (30/min budget), deduped by repo#number so an issue that is
+# both authored and assigned isn't double-counted. Writes "opened<TAB>closed".
+GH_RAW="$(mktemp)"
+(
+  if command -v gh >/dev/null 2>&1; then
+    gh_today="$(date +%Y-%m-%d)"
+    issue_keys() {
+      gh search issues "$@" --limit 100 --json number,repository \
+        -q '.[] | "\(.repository.nameWithOwner)#\(.number)"' 2>/dev/null
+    }
+    opened=$( { issue_keys --author=@me --created=">=$gh_today"
+               issue_keys --assignee=@me --created=">=$gh_today"; } | sort -u | grep -c . )
+    closed=$( { issue_keys --author=@me --closed=">=$gh_today"
+               issue_keys --assignee=@me --closed=">=$gh_today"; } | sort -u | grep -c . )
+    printf '%s\t%s\n' "${opened:-0}" "${closed:-0}" >"$GH_RAW"
+  fi
+) &
+GH_PID=$!
+
 # --- Git: scan a base dir; one numstat pass per repo, count commits + sum lines.
 # Populates globals: g_commits g_add g_del g_rows (safe if $1 doesn't exist —
 # the unmatched glob fails the .git guard and the loop body is skipped).
@@ -88,6 +109,12 @@ tot_cost="${tot_cost:-0.00}"; tot_htok="${tot_htok:-0}"
 c_cost="${c_cost:-0.00}"; c_htok="${c_htok:-0}"; c_models="${c_models:--}"
 a_cost="${a_cost:-0.00}"; a_htok="${a_htok:-0}"; a_models="${a_models:--}"
 
+# --- GitHub issues today ---
+wait "$GH_PID" 2>/dev/null
+IFS=$'\t' read -r gh_opened gh_closed < "$GH_RAW" 2>/dev/null
+rm -f "$GH_RAW"
+gh_opened="${gh_opened:-0}"; gh_closed="${gh_closed:-0}"
+
 # --- Render a "base<TAB>commits<TAB>add<TAB>del" repo table under a heading ---
 print_section() {
   local title="$1" base="$2" commits="$3" add="$4" del="$5" rows="$6"
@@ -103,7 +130,10 @@ print_section() {
 }
 
 # ================= SwiftBar output =================
-echo "⚡ ${total_commits}cmmt · \$${tot_cost} · ${tot_htok} | font=Menlo size=13"
+# Two title lines before the first "---" cycle (rotate ~5s) in the menu bar —
+# narrower than one long line, since the menu bar can't stack rows vertically.
+echo "⚡ ${total_commits}cmmt · ↑${gh_opened}/↓${gh_closed} | font=Menlo size=13"
+echo "\$${tot_cost} · ${tot_htok} | font=Menlo size=13"
 echo "---"
 print_section "Work today" "$WORK" "$work_commits" "$work_add" "$work_del" "$work_rows"
 echo "---"
@@ -113,7 +143,8 @@ echo "Claude today · \$${c_cost} · ${c_htok} tok | font=Menlo"
 [ "$c_models" != "-" ] && echo "models: ${c_models} | font=Menlo size=12 color=gray"
 echo "Antigravity today · \$${a_cost} · ${a_htok} tok | font=Menlo"
 [ "$a_models" != "-" ] && echo "models: ${a_models} | font=Menlo size=12 color=gray"
-echo "github.com/luarss | font=Menlo size=12 href=https://github.com/luarss"
+echo "Issues today · ↑${gh_opened} opened · ↓${gh_closed} closed | font=Menlo"
+echo "author or assignee · github.com/luarss | font=Menlo size=12 color=gray href=https://github.com/luarss"
 echo "---"
 echo "Updated $(date +%H:%M) | size=11 color=gray"
 echo "Refresh | refresh=true"

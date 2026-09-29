@@ -217,6 +217,22 @@ JSON
 EOF
   chmod +x "$stub_dir/ccusage"
 
+  # Stub gh so issue counts are deterministic and no network call is made.
+  # Emulates `gh search issues ... -q ...` by printing repo#number keys directly.
+  # author-opened {1,2} ∪ assignee-opened {2,3} → 3 distinct opened (dedup on #2);
+  # author-closed {5} ∪ assignee-closed {} → 1 closed.
+  cat > "$stub_dir/gh" <<'EOF'
+#!/bin/bash
+args="$*"
+if [[ "$args" == *"--created"* ]]; then
+  if [[ "$args" == *"--author"* ]]; then printf 'o/r#1\no/r#2\n'
+  else printf 'o/r#2\no/r#3\n'; fi
+elif [[ "$args" == *"--closed"* ]]; then
+  if [[ "$args" == *"--author"* ]]; then printf 'o/r#5\n'; fi
+fi
+EOF
+  chmod +x "$stub_dir/gh"
+
   # Run prodwatch with empty WORK/PROJECTS and stubbed ccusage
   local fake_home="$TEST_DIR/home"
   mkdir -p "$fake_home/work" "$fake_home/projects"
@@ -224,8 +240,12 @@ EOF
   run env HOME="$fake_home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
   [ "$status" -eq 0 ]
 
-  # Check menubar header has aggregate total
-  [[ "$output" =~ "⚡ 0cmmt · \$5.57 · 2.9M | font=Menlo size=13" ]]
+  # Check menubar header (two cycling title lines): commits + issue counts, then cost/tokens
+  [[ "$output" =~ "⚡ 0cmmt · ↑3/↓1 | font=Menlo size=13" ]]
+  [[ "$output" =~ "\$5.57 · 2.9M | font=Menlo size=13" ]]
+
+  # Check issues dropdown section
+  [[ "$output" =~ "Issues today · ↑3 opened · ↓1 closed | font=Menlo" ]]
 
   # Check Claude section
   [[ "$output" =~ "Claude today · \$5.00 · 500k tok | font=Menlo" ]]
@@ -234,4 +254,29 @@ EOF
   # Check Antigravity section
   [[ "$output" =~ "Antigravity today · \$0.57 · 2.4M tok | font=Menlo" ]]
   [[ "$output" =~ "models: 3.8-flash-high | font=Menlo size=12 color=gray" ]]
+}
+
+@test "prodwatch shows zero issue counts when gh returns nothing" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/ccusage" <<'EOF'
+#!/bin/bash
+echo '{"daily":[{"agent":"all","totalCost":0,"totalTokens":0,"agents":[]}]}'
+EOF
+  chmod +x "$stub_dir/ccusage"
+
+  # gh present but authed to nothing today → empty output on every search
+  cat > "$stub_dir/gh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  chmod +x "$stub_dir/gh"
+
+  local fake_home="$TEST_DIR/home"
+  mkdir -p "$fake_home/work" "$fake_home/projects"
+
+  run env HOME="$fake_home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "⚡ 0cmmt · ↑0/↓0 | font=Menlo size=13" ]]
+  [[ "$output" =~ "Issues today · ↑0 opened · ↓0 closed | font=Menlo" ]]
 }
