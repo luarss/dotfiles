@@ -132,7 +132,7 @@ print_section() {
 # ================= SwiftBar output =================
 # Two title lines before the first "---" cycle (rotate ~5s) in the menu bar —
 # narrower than one long line, since the menu bar can't stack rows vertically.
-echo "⚡ ${total_commits}cmmt · ↑${gh_opened}/↓${gh_closed} | font=Menlo size=13"
+echo "<> ${total_commits} · 🐛 ↑${gh_opened}/↓${gh_closed} | font=Menlo size=13"
 echo "\$${tot_cost} · ${tot_htok} | font=Menlo size=13"
 echo "---"
 print_section "Work today" "$WORK" "$work_commits" "$work_add" "$work_del" "$work_rows"

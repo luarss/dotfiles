@@ -241,7 +241,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Check menubar header (two cycling title lines): commits + issue counts, then cost/tokens
-  [[ "$output" =~ "⚡ 0cmmt · ↑3/↓1 | font=Menlo size=13" ]]
+  [[ "$output" =~ "<> 0 · 🐛 ↑3/↓1 | font=Menlo size=13" ]]
   [[ "$output" =~ "\$5.57 · 2.9M | font=Menlo size=13" ]]
 
   # Check issues dropdown section
@@ -277,6 +277,6 @@ EOF
 
   run env HOME="$fake_home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "⚡ 0cmmt · ↑0/↓0 | font=Menlo size=13" ]]
+  [[ "$output" =~ "<> 0 · 🐛 ↑0/↓0 | font=Menlo size=13" ]]
   [[ "$output" =~ "Issues today · ↑0 opened · ↓0 closed | font=Menlo" ]]
 }
