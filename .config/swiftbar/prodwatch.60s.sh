@@ -2,7 +2,7 @@
 # SwiftBar productivity widget: today's git activity + Claude/Antigravity usage.
 # Refreshes every 60s (filename ".60s."). Deliberately lightweight: one git
 # pass per repo, one node call, active repos only.
-export PATH="/opt/homebrew/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+export PATH="$PATH:/opt/homebrew/bin:/usr/bin:/bin:$HOME/.local/bin"
 
 WORK="$HOME/work"
 PROJECTS="$HOME/projects"
