@@ -32,7 +32,7 @@ profile_dirs=(
 )
 
 # Repo-pointing symlinks inside the profile dirs (skills, hooks, commands,
-# AGENTS.md/CLAUDE.md/RTK.md, status-line.sh, models.json).
+# AGENTS.md/RTK.md, status-line.sh, models.json).
 symlinks=()
 for d in "${profile_dirs[@]}"; do
   [ -d "$d" ] || continue

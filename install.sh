@@ -76,16 +76,17 @@ generate_profiles() {
     [ -n "$token_var" ] && token="${!token_var:-}"
 
     mkdir -p "$HOME/$dir"
-    symlink "$dir/AGENTS.md"
-    # RTK.md is macOS-only (rtk is a Homebrew package). On macOS with an RTK profile,
-    # generate CLAUDE.md with @RTK.md included; everywhere else, symlink it as-is.
+    # RTK.md is macOS-only (rtk is a Homebrew package). On macOS with an RTK
+    # profile, generate AGENTS.md with @RTK.md appended; everywhere else,
+    # symlink AGENTS.md as-is. (CLAUDE.md is gone — `instructionFiles:
+    # "claude-md-or-agents-md"` loads AGENTS.md directly when CLAUDE.md is absent.)
     if [ "$(uname)" = "Darwin" ] && [ -e "$DOTFILES/$dir/RTK.md" ]; then
       symlink "$dir/RTK.md"
-      rm -f "$HOME/$dir/CLAUDE.md"
-      printf '@AGENTS.md\n\n@RTK.md\n' > "$HOME/$dir/CLAUDE.md"
-      echo "GEN   $HOME/$dir/CLAUDE.md (darwin+rtk)"
+      rm -f "$HOME/$dir/AGENTS.md"
+      { cat "$DOTFILES/$dir/AGENTS.md"; printf '\n@RTK.md\n'; } > "$HOME/$dir/AGENTS.md"
+      echo "GEN   $HOME/$dir/AGENTS.md (darwin+rtk)"
     else
-      symlink "$dir/CLAUDE.md"
+      symlink "$dir/AGENTS.md"
     fi
     ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"

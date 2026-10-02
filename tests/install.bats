@@ -153,7 +153,7 @@ teardown() {
   # RTK.md/rtk are Homebrew/macOS-only — they must stay out of the Linux path
   # even though ~/.zshrc itself is now installed there
   [ ! -e "$HOME/.claude/RTK.md" ]
-  [[ "$(cat "$HOME/.claude/CLAUDE.md" 2>/dev/null)" != *RTK.md* ]]
+  [[ "$(cat "$HOME/.claude/AGENTS.md" 2>/dev/null)" != *RTK.md* ]]
 }
 
 # --- macOS: real install path (uname mocked to Darwin) ---
