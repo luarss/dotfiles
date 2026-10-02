@@ -119,6 +119,7 @@ File access boundaries, protected patterns, and command deny lists are centraliz
 - **Claude Code**: Compiled into `Read(...)` and `Bash(...)` under `permissions.deny` / `allow`, plus `ignorePatterns`.
 - **Antigravity CLI**: Compiled into `read_file(...)` and `command(...)` under `permissions.deny` / `allow`, plus gitignore boundary flags (`allowAgentAccessGitignoreFiles: false`, etc.).
 - **Antigravity 2.0 Desktop**: Compiled into `read_file(...)` and `command(...)` under `userSettings.globalPermissionGrants`.
+- **Antigravity-only allows**: `allow.agy_files` (→ `read_file(...)`) and `allow.agy_write_files` (→ `write_file(...)`) feed both Antigravity targets but not Claude Code, whose `Read`/`Edit` rules treat `/path` as project-relative.
 
 The deny list blocks destructive `rm` commands and reads of `.env*`, SSH/AWS/GCP configs, credentials, secrets, key/pem files, database configs (`~/.my.cnf`), and shell/REPL history files (`.zsh_history`, `.bash_history`, `.mysql_history`, `.psql_history`, `fish_history`, etc., which can leak secrets typed on the command line). Edit `file-permissions.json` to change the policy across all tools at once.
 

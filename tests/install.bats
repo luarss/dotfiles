@@ -243,6 +243,8 @@ EOF
   [ "$(jq -r '.permissions.deny | length' "$settings")" -gt 50 ]
   [ "$(jq -r '.permissions.deny[0]' "$settings")" = "command(rm -rf)" ]
   [ "$(jq -r '.permissions.allow[0]' "$settings")" = "command(ccusage)" ]
+  [ "$(jq -r '.permissions.allow | index("read_file(/tmp/ts-pending.json)")' "$settings")" != "null" ]
+  [ "$(jq -r '.permissions.allow | index("write_file(/private/tmp/ts-decisions.json)")' "$settings")" != "null" ]
   # Pre-existing app state untouched
   [ "$(jq -r '.gcp.project' "$settings")" = "some-project" ]
   [ "$(jq -r '.trustedWorkspaces[0]' "$settings")" = "/Users/me/work/repo" ]
@@ -286,6 +288,7 @@ EOF
   [ "$(jq -r '.userSettings.globalPermissionGrants.deny | length' "$config")" -gt 50 ]
   [ "$(jq -r '.userSettings.globalPermissionGrants.deny[0]' "$config")" = "command(rm -rf)" ]
   [ "$(jq -r '.userSettings.globalPermissionGrants.allow[0]' "$config")" = "command(ccusage)" ]
+  [ "$(jq -r '.userSettings.globalPermissionGrants.allow | index("write_file(/tmp/ts-decisions.json)")' "$config")" != "null" ]
 }
 
 @test "install_antigravity_desktop_settings_skipped_on_linux" {
@@ -338,6 +341,8 @@ EOF
   [ "$(echo "$claude_json" | jq -r '.permissions.allow[0]')" = "Bash(ccusage)" ]
   [ "$(echo "$agy_json" | jq -r '.permissions.allow[0]')" = "command(ccusage)" ]
   [ "$(echo "$desktop_json" | jq -r '.userSettings.globalPermissionGrants.allow[0]')" = "command(ccusage)" ]
+  [ "$(echo "$agy_json" | jq -c '.permissions.allow')" = "$(echo "$desktop_json" | jq -c '.userSettings.globalPermissionGrants.allow')" ]
+  [ "$(echo "$claude_json" | jq -r '.permissions.allow | map(select(test("ts-"))) | length')" = "0" ]
 }
 
 @test "setup_zsh_config_symlinks_zshrc_on_macos" {

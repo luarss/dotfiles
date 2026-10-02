@@ -27,46 +27,30 @@ def claude_permissions($p):
       { ignorePatterns: $p.ignorePatterns }
      else {} end);
 
-def agy_cli_permissions($p):
+def agy_rules($p):
   {
-    permissions: (
-      {
-        deny: (
-          (($p.deny.commands // []) | map("command(\(sub(":\\*$"; "")))"))
-          + (($p.deny.files // []) | map("read_file(\(.))"))
-        )
-      }
-      + (if (($p.allow.commands // []) + ($p.allow.files // [])) | length > 0 then
-          {
-            allow: (
-              (($p.allow.commands // []) | map("command(\(sub(":\\*$"; "")))"))
-              + (($p.allow.files // []) | map("read_file(\(.))"))
-            )
-          }
-         else {} end)
+    deny: (
+      (($p.deny.commands // []) | map("command(\(sub(":\\*$"; "")))"))
+      + (($p.deny.files // []) | map("read_file(\(.))"))
     )
   }
+  + (
+      (
+        (($p.allow.commands // []) | map("command(\(sub(":\\*$"; "")))"))
+        + ((($p.allow.files // []) + ($p.allow.agy_files // [])) | map("read_file(\(.))"))
+        + (($p.allow.agy_write_files // []) | map("write_file(\(.))"))
+      ) as $allow
+      | if ($allow | length) > 0 then { allow: $allow } else {} end
+    );
+
+def agy_cli_permissions($p):
+  { permissions: agy_rules($p) }
   + ($p.gitignoreAccess // {});
 
 def antigravity_desktop_grants($p):
   {
     userSettings: {
-      globalPermissionGrants: (
-        {
-          deny: (
-            (($p.deny.commands // []) | map("command(\(sub(":\\*$"; "")))"))
-            + (($p.deny.files // []) | map("read_file(\(.))"))
-          )
-        }
-        + (if (($p.allow.commands // []) + ($p.allow.files // [])) | length > 0 then
-            {
-              allow: (
-                (($p.allow.commands // []) | map("command(\(sub(":\\*$"; "")))"))
-                + (($p.allow.files // []) | map("read_file(\(.))"))
-              )
-            }
-           else {} end)
-      )
+      globalPermissionGrants: agy_rules($p)
     }
   };
 

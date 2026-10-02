@@ -84,6 +84,14 @@
     "files": [],
     "commands": [
       "ccusage"
+    ],
+    "agy_files": [
+      "/tmp/ts-pending.json",
+      "/private/tmp/ts-pending.json"
+    ],
+    "agy_write_files": [
+      "/tmp/ts-decisions.json",
+      "/private/tmp/ts-decisions.json"
     ]
   },
   "ignorePatterns": [
