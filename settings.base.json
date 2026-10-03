@@ -10,6 +10,10 @@
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "npm_config_force": "true"
   },
+  "permissions": {
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable"
+  },
   "hooks": {
     "PreToolUse": [
       {
