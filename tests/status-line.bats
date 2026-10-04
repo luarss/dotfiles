@@ -14,6 +14,8 @@ setup() {
   # A fixed-name, non-git directory so DIR == "proj" and get_git_info stays empty.
   DIRPATH="$WORKDIR/proj"
   mkdir -p "$DIRPATH"
+  USAGE_CACHE="$WORKDIR/usage.json"
+  FETCH_CMD=""
 }
 
 teardown() {
@@ -26,6 +28,7 @@ teardown() {
 sl() {
   local cols="$1" json="$2" show="${3-1}"
   COLUMNS="$cols" SHOW_USAGE_LIMITS="$show" \
+    CLAUDE_USAGE_CACHE="$USAGE_CACHE" CLAUDE_USAGE_FETCH_CMD="${FETCH_CMD:-false}" \
     bash -c 'printf "%s" "$1" | bash "$2"' _ "$json" "$SL"
 }
 
@@ -39,6 +42,18 @@ vislen() {
 }
 
 now() { date +%s; }
+
+main_line() { printf '%s\n' "$1" | sed -n 1p; }
+usage_line() { printf '%s\n' "$1" | sed -n 2p; }
+
+widest_line() {
+  local line widest=0 len
+  while IFS= read -r line; do
+    len=$(vislen "$line")
+    [ "$len" -gt "$widest" ] && widest=$len
+  done <<< "$1"
+  printf '%s' "$widest"
+}
 
 # JSON with only the five_hour window. $1=used_percentage $2=resets_at (epoch).
 json_5h() {
@@ -106,7 +121,7 @@ json_none() {
 
 @test "no reset string when the window already reset (past timestamp)" {
   out=$(sl 300 "$(json_5h 36 "$(( $(now) - 100 ))")")
-  [[ "$out" == *"5h limit"* ]]
+  [[ "$out" == *"5h"* ]]
   [[ "$out" != *"resets"* ]]
 }
 
@@ -120,46 +135,52 @@ json_none() {
 
 # ─── width-aware degradation ──────────────────────────────────────────────────
 
-@test "full form at a wide terminal includes label and reset times" {
+@test "usage renders on its own second line" {
   out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 184200 ))")")
-  [[ "$out" == *"usage:"* ]]
-  [[ "$out" == *"5h limit"* ]]
-  [[ "$out" == *"resets"* ]]
+  [[ "$(main_line "$out")" != *"⏳"* ]]
+  [[ "$(usage_line "$out")" == *"⏳"* ]]
+}
+
+@test "main line has no trailing newline when usage is hidden" {
+  out=$(sl 300 "$(json_none)" 1)
+  [ "$(printf '%s' "$out" | wc -l | tr -d ' ')" = "0" ]
+}
+
+@test "full form at a wide terminal includes reset times without limit labels" {
+  out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 184200 ))")")
+  line=$(usage_line "$out")
+  [[ "$line" == *"5h"* ]]
+  [[ "$line" == *"(resets 2h13m)"* ]]
+  [[ "$line" == *"·"* ]]
+  [[ "$line" != *"limit"* ]]
+  [[ "$line" != *"usage:"* ]]
 }
 
 @test "falls back to compact form when full does not fit" {
   json=$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 184200 ))")
-  full=$(sl 9999 "$json")
-  full_len=$(vislen "$full")
-  # One column too narrow for the full form.
-  out=$(sl "$(( full_len - 1 ))" "$json")
-  [[ "$out" == *"⏳"* ]]            # usage still present
+  full_len=$(vislen "$(usage_line "$(sl 9999 "$json")")")
+  out=$(usage_line "$(sl "$(( full_len - 1 ))" "$json")")
+  [[ "$out" == *"⏳"* ]]
   [[ "$out" == *"5h"* ]]
-  [[ "$out" != *"limit"* ]]         # labels dropped
-  [[ "$out" != *"resets"* ]]        # reset times dropped
-  [ "$(vislen "$out")" -le "$(( full_len - 1 ))" ]   # and it actually fits
+  [[ "$out" != *"resets"* ]]
+  [ "$(vislen "$out")" -le "$(( full_len - 1 ))" ]
 }
 
-@test "drops usage entirely when even compact does not fit" {
+@test "drops usage line when even compact does not fit" {
   json=$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 184200 ))")
-  # Measure the compact form's width, then go one narrower.
-  full=$(sl 9999 "$json")
-  full_len=$(vislen "$full")
-  compact=$(sl "$(( full_len - 1 ))" "$json")
-  compact_len=$(vislen "$compact")
+  full_len=$(vislen "$(usage_line "$(sl 9999 "$json")")")
+  compact_len=$(vislen "$(usage_line "$(sl "$(( full_len - 1 ))" "$json")")")
   out=$(sl "$(( compact_len - 1 ))" "$json")
   [[ "$out" != *"⏳"* ]]
-  [[ "$out" != *"5h"* ]]
-  # Core segments survive.
   [[ "$out" == *"proj"* ]]
   [[ "$out" == *"Test"* ]]
 }
 
-@test "rendered line never exceeds COLUMNS across a range of widths" {
+@test "no rendered line exceeds COLUMNS across a range of widths" {
   json=$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 184200 ))")
   for cols in 200 130 100 80; do
     out=$(sl "$cols" "$json")
-    len=$(vislen "$out")
+    len=$(widest_line "$out")
     [ "$len" -le "$cols" ] || {
       echo "width $cols overflowed: visible len $len" >&2
       return 1
@@ -216,4 +237,76 @@ json_model() {
   [[ "$out" == *"proj"* ]]      # cwd basename
   [[ "$out" == *"Test"* ]]      # model display name
   [[ "$out" == *"⏱"* ]]         # session duration glyph
+}
+
+# ─── model-scoped weekly limits (Fable) ─────────────────────────────────────
+
+usage_response() {
+  jq -n --argjson pct "$1" \
+    '{limits:[
+       {kind:"weekly_all",percent:53,resets_at:"2030-01-01T00:00:00.123+00:00",scope:null},
+       {kind:"weekly_scoped",percent:$pct,resets_at:"2030-01-01T00:00:00.123+00:00",
+        scope:{model:{id:null,display_name:"Fable"},surface:null}}]}'
+}
+
+stub_fetch() {
+  usage_response "$1" > "$WORKDIR/response.json"
+  FETCH_CMD="cat '$WORKDIR/response.json'"
+}
+
+@test "Fable limit fetched on first render when cache is missing" {
+  stub_fetch 9
+  out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
+  [[ "$(usage_line "$out")" == *"Fable"*"9%"* ]]
+  [ -f "$USAGE_CACHE" ]
+}
+
+@test "Fable limit shown in compact form" {
+  stub_fetch 9
+  out=$(sl 40 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
+  plain=$(printf '%s' "$out" | sed -E $'s/\033\\[[0-9;]*m//g')
+  [[ "$plain" == *"Fable 9%"* ]]
+  [[ "$plain" != *"resets"* ]]
+}
+
+@test "fresh cache is used without fetching" {
+  usage_response 42 > "$USAGE_CACHE"
+  FETCH_CMD="echo fetched > '$WORKDIR/called'; false"
+  out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
+  [[ "$out" == *"42%"* ]]
+  [ ! -f "$WORKDIR/called" ]
+}
+
+@test "Fable limit hidden when SHOW_USAGE_LIMITS != 1" {
+  stub_fetch 9
+  out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" 0)
+  [[ "$out" != *"Fable"* ]]
+  [ ! -f "$USAGE_CACHE" ]
+}
+
+@test "usage endpoint not called for sessions without rate_limits" {
+  stub_fetch 9
+  out=$(sl 300 "$(json_none)" 1)
+  [[ "$out" != *"Fable"* ]]
+  [ ! -f "$USAGE_CACHE" ]
+}
+
+@test "failed fetch renders without Fable and caches an empty placeholder" {
+  FETCH_CMD="false"
+  out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
+  [[ "$out" == *"5h"* ]]
+  [[ "$out" != *"Fable"* ]]
+  [ "$(cat "$USAGE_CACHE")" = "{}" ]
+}
+
+@test "malformed response is not cached" {
+  FETCH_CMD="echo not-json"
+  sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" >/dev/null
+  [ "$(cat "$USAGE_CACHE")" = "{}" ]
+}
+
+@test "Fable reset shown in full form" {
+  stub_fetch 9
+  plain=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" | sed -E $'s/\033\\[[0-9;]*m//g')
+  [[ "$(usage_line "$plain")" == *"Fable 9% (resets "* ]]
 }

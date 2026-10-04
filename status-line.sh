@@ -47,6 +47,10 @@ SEVEN_DAY_WINDOW=604800
 # wildly unstable (a 1% burn in the first 10 minutes projects to ~1000%).
 PROJECT_MIN_ELAPSED_FRAC=0.02
 
+USAGE_ENDPOINT="https://api.anthropic.com/api/oauth/usage"
+USAGE_CACHE_TTL=60
+USAGE_CACHE_FILE="${CLAUDE_USAGE_CACHE:-${TMPDIR:-/tmp}/claude-statusline-usage.json}"
+
 # Cache hit rate thresholds.
 # ~90% is the healthy target on active sessions; the Claude Code team alerts
 # on cache breaks. Dropping ~20 points typically signals cache busting (e.g.
@@ -268,7 +272,7 @@ format_reset() {
 #   window_start   = reset_at - SEVEN_DAY_WINDOW
 #   elapsed_frac   = (now - window_start) / SEVEN_DAY_WINDOW
 #   projected_pct  = used_pct / elapsed_frac
-# Emits a colored " → proj NN%" string (red if projected to exhaust the window,
+# Emits a colored " →NN%" string (red if projected to exhaust the window,
 # yellow past the warn threshold). No-op when we can't compute a stable value:
 # no reset timestamp, no usage, or too early in the window.
 project_7d_usage() {
@@ -295,32 +299,127 @@ project_7d_usage() {
         color=$C_GREEN
     fi
 
-    printf " %b→ proj%b %b%s%%%b" "$C_DIM" "$C_RESET" "$color" "$pct_int" "$C_RESET"
+    printf " %b→%b%b%s%%%b" "$C_DIM" "$C_RESET" "$color" "$pct_int" "$C_RESET"
 }
 
-# 5h/7d subscription-usage readout. No-op unless SHOW_USAGE_LIMITS=1 (default
-# profile only) and at least one rate-limit window is present.
-#   mode "full"    — "⏳ usage: 5h limit 36% (resets 2h13m) · 7d limit 18% (resets 2d21h) → proj 45%"
-#   mode "compact" — "⏳ 5h 36% 7d 18% →45%"   (labels + resets dropped to save space)
-# The "→ proj NN%" tail is the 7-day usage projected to the end of the window at
-# the current burn rate (see project_7d_usage).
-build_usage_segment() {
-    [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
-    local mode=${1:-full} seg=""
+read_oauth_token() {
+    if [[ "$OSTYPE" == darwin* ]]; then
+        security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null
+    else
+        cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json" 2>/dev/null
+    fi | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null
+}
 
-    if [[ "$mode" == "compact" ]]; then
-        [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")"
-        [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")"
-        [[ -z "$seg" ]] && return 0
-        printf " %b⏳%b%s" "$C_DIM" "$C_RESET" "$seg"
+fetch_usage() {
+    if [[ -n "${CLAUDE_USAGE_FETCH_CMD:-}" ]]; then
+        bash -c "$CLAUDE_USAGE_FETCH_CMD"
+        return
+    fi
+
+    local token
+    token=$(read_oauth_token)
+    [[ -z "$token" ]] && return 1
+
+    curl -sS --max-time 3 "$USAGE_ENDPOINT" \
+        -H "anthropic-beta: oauth-2025-04-20" \
+        -H @- <<< "Authorization: Bearer $token"
+}
+
+refresh_usage_cache() {
+    local temp_file
+    temp_file=$(mktemp "${USAGE_CACHE_FILE}.XXXXXX") || return 0
+
+    if fetch_usage > "$temp_file" 2>/dev/null &&
+       jq -e '.limits | type == "array"' "$temp_file" >/dev/null 2>&1; then
+        mv "$temp_file" "$USAGE_CACHE_FILE"
         return 0
     fi
 
-    [[ -n "$RL_5H" ]] && seg+=" ${C_DIM}5h limit${C_RESET} $(colorize_usage_pct "$RL_5H")$(format_reset "$RL_5H_RESET")"
-    [[ -n "$RL_7D" ]] && seg+=" ${C_DIM}·${C_RESET} ${C_DIM}7d limit${C_RESET} $(colorize_usage_pct "$RL_7D")$(format_reset "$RL_7D_RESET")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")"
-    [[ -z "$seg" ]] && return 0
+    rm -f "$temp_file"
+    [[ -f "$USAGE_CACHE_FILE" ]] || echo '{}' > "$USAGE_CACHE_FILE"
+}
 
-    printf " %b⏳ usage:%b%s" "$C_DIM" "$C_RESET" "$seg"
+file_age_seconds() {
+    local modified_at
+    if [[ "$OSTYPE" == darwin* ]]; then
+        modified_at=$(stat -f %m "$1" 2>/dev/null || echo 0)
+    else
+        modified_at=$(stat -c %Y "$1" 2>/dev/null || echo 0)
+    fi
+    echo $(( $(date +%s) - modified_at ))
+}
+
+ensure_usage_cache() {
+    if [[ ! -f "$USAGE_CACHE_FILE" ]]; then
+        refresh_usage_cache
+        return 0
+    fi
+
+    if [[ $(file_age_seconds "$USAGE_CACHE_FILE") -ge $USAGE_CACHE_TTL ]]; then
+        touch "$USAGE_CACHE_FILE"
+        ( refresh_usage_cache </dev/null >/dev/null 2>&1 & )
+    fi
+}
+
+read_model_scoped_limits() {
+    [[ -f "$USAGE_CACHE_FILE" ]] || return 0
+    jq -r '
+        .limits[]?
+        | select(.kind == "weekly_scoped" and .scope.model.display_name != null)
+        | [
+            .scope.model.display_name,
+            (.percent // 0),
+            ((.resets_at // "") | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | (try fromdateiso8601 catch ""))
+          ]
+        | @tsv
+    ' "$USAGE_CACHE_FILE" 2>/dev/null
+}
+
+load_model_scoped_limits() {
+    [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
+    [[ -z "$RL_5H" && -z "$RL_7D" ]] && return 0
+    ensure_usage_cache
+    read_model_scoped_limits
+}
+
+build_model_scoped_parts() {
+    local mode=$1 name pct reset_at part
+    while IFS=$'\t' read -r name pct reset_at; do
+        [[ -z "$name" ]] && continue
+        part="${C_DIM}${name}${C_RESET} $(colorize_usage_pct "$pct")"
+        [[ "$mode" == "full" ]] && part+=$(format_reset "$reset_at")
+        printf '%s\n' "$part"
+    done <<< "$MODEL_SCOPED_LIMITS"
+}
+
+# Subscription-usage line. No-op unless SHOW_USAGE_LIMITS=1 (default profile
+# only) and at least one window is present.
+#   mode "full"    — "⏳ 5h 36% (resets 2h13m) · 7d 18% (resets 2d21h) →45% · Fable 9% (resets 2d21h)"
+#   mode "compact" — "⏳ 5h 36% 7d 18% →45% Fable 9%"
+build_usage_segment() {
+    [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
+    local mode=${1:-full} separator=" " part parts=() line=""
+
+    if [[ "$mode" == "full" ]]; then
+        separator=" ${C_DIM}·${C_RESET} "
+        [[ -n "$RL_5H" ]] && parts+=("${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")$(format_reset "$RL_5H_RESET")")
+        [[ -n "$RL_7D" ]] && parts+=("${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")$(format_reset "$RL_7D_RESET")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")")
+    else
+        [[ -n "$RL_5H" ]] && parts+=("${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")")
+        [[ -n "$RL_7D" ]] && parts+=("${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")")
+    fi
+
+    while IFS= read -r part; do
+        [[ -n "$part" ]] && parts+=("$part")
+    done < <(build_model_scoped_parts "$mode")
+
+    [[ ${#parts[@]} -eq 0 ]] && return 0
+
+    for part in "${parts[@]}"; do
+        [[ -n "$line" ]] && line+="$separator"
+        line+="$part"
+    done
+    printf "%b⏳%b %s" "$C_DIM" "$C_RESET" "$line"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -328,7 +427,7 @@ build_usage_segment() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 main() {
-    local total_in out_tok cache_read ctx_pct cache_pct duration git_info usage_seg
+    local total_in out_tok cache_read ctx_pct cache_pct duration git_info
     local cache_color cache_warn=""
 
     read -r total_in out_tok cache_read <<< "$(get_token_metrics)"
@@ -358,10 +457,9 @@ main() {
     duration=$(get_session_duration)
     git_info=$(get_git_info)
 
-    # Render the line with a given cache-warning string and usage segment. The
-    # degradation chain below swaps these two args to shrink the line.
+    # Render the main line with a given cache-warning string.
     render() {
-        printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b%s" \
+        printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b" \
             "$C_BOLD_GREEN" "$C_RESET" \
             "$C_CYAN" "$DIR" "$C_RESET" \
             "$git_info" \
@@ -370,36 +468,31 @@ main() {
             "$cache_color" "$cache_pct" "$C_RESET" "$C_DIM" "$C_RESET" \
             "$1" \
             "$(build_progress_bar "$ctx_pct")" \
-            "$C_CYAN" "$duration" "$C_RESET" \
-            "$2"
+            "$C_CYAN" "$duration" "$C_RESET"
     }
 
     # Width-aware degradation. Claude Code exports COLUMNS (v2.1.153+); fall back
-    # to 80. We try progressively smaller renderings and emit the first that fits
-    # the terminal, so a narrow window drops the least useful detail first instead
-    # of getting truncated mid-segment. Order, most→least verbose:
-    #   1. full usage + reset times + cache warning
-    #   2. compact usage (no labels/resets) + cache warning
-    #   3. compact usage, no cache-warning text (red ⚡% still signals it)
-    #   4. no usage, no cache-warning text
-    local cols=${COLUMNS:-80} line
-    local usage_full usage_compact
-    usage_full=$(build_usage_segment full)
-    usage_compact=$(build_usage_segment compact)
+    # to 80. Each line emits the first candidate that fits the terminal:
+    #   main line  — with cache-warning text, then without (red ⚡% still signals it)
+    #   usage line — full (with resets), then compact, then omitted
+    local cols=${COLUMNS:-80} candidate main_line="" usage_line=""
+    MODEL_SCOPED_LIMITS=$(load_model_scoped_limits)
 
-    for line in \
-        "$(render "$cache_warn" "$usage_full")" \
-        "$(render "$cache_warn" "$usage_compact")" \
-        "$(render "$cache_warn" "")" \
-        "$(render "" "")"; do
-        if [[ $(visible_len "$line") -le $cols ]]; then
-            printf '%s' "$line"
-            return 0
+    for candidate in "$(render "$cache_warn")" "$(render "")"; do
+        main_line=$candidate
+        [[ $(visible_len "$candidate") -le $cols ]] && break
+    done
+
+    for candidate in "$(build_usage_segment full)" "$(build_usage_segment compact)"; do
+        if [[ -n "$candidate" && $(visible_len "$candidate") -le $cols ]]; then
+            usage_line=$candidate
+            break
         fi
     done
 
-    # Even the smallest form overflows — emit it anyway (terminal will truncate).
-    printf '%s' "$line"
+    printf '%s' "$main_line"
+    [[ -n "$usage_line" ]] && printf '\n%s' "$usage_line"
+    return 0
 }
 
 # Visible (display-cell) length of a string: strip ANSI escape sequences, count
