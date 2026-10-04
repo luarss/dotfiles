@@ -33,7 +33,8 @@ shell-integration = detect
 
 scrollback-limit = 25000000
 
-keybind = cmd+v=text:\x16
+keybind = cmd+v=paste_from_clipboard
+keybind = chain=text:\x16
 keybind = cmd+t=new_tab
 keybind = cmd+shift+left=previous_tab
 keybind = cmd+shift+right=next_tab
