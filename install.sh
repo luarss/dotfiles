@@ -508,6 +508,17 @@ install_commands() {
   done
 }
 
+install_ghostty_config() {
+  if is_work_machine; then
+    echo "SKIP  ghostty config (work machine)"
+    return 0
+  fi
+  local ghostty_dst="$HOME/.config/ghostty"
+  mkdir -p "$ghostty_dst"
+  ln -sf "$DOTFILES/ghostty/config" "$ghostty_dst/config"
+  echo "LINK  $ghostty_dst/config -> $DOTFILES/ghostty/config"
+}
+
 install_zsh_plugin() {
   local repo="$1"
   local name="${2:-$(basename "$repo" .git)}"
@@ -684,6 +695,8 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Antigravity CLI (agy) settings: telemetry + tips/surveys off + file permissions
   install_agy_settings
+
+  install_ghostty_config
 
   # Antigravity 2.0 (Desktop Electron app / IDE) settings: global permission grants
   install_antigravity_desktop_settings

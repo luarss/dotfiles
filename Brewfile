@@ -39,4 +39,5 @@ if is_work_machine
   cask "swiftbar"
 else
   cask "ghostty"
+  cask "font-jetbrains-mono-nerd-font"
 end
