@@ -380,7 +380,7 @@ EOF
   [ -z "$output" ]
 }
 
-@test "ghostty_config_linked_on_personal_mac" {
+@test "ghostty_config_linked_on_any_mac" {
   uname() { echo "Darwin"; }
   hostname() { echo "personal-macbook-pro"; }
   export -f uname hostname
@@ -390,13 +390,12 @@ EOF
   [ "$(readlink "$HOME/.config/ghostty/config")" = "$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)/ghostty/config" ]
 }
 
-@test "ghostty_config_skipped_on_work_mac" {
+@test "ghostty_config_linked_on_work_mac" {
   uname() { echo "Darwin"; }
   hostname() { echo "custom-corp-laptop"; }
   export -f uname hostname
   export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
 
   run bash "$INSTALL_SCRIPT"
-  [ ! -e "$HOME/.config/ghostty/config" ]
-  [[ "$output" == *"SKIP  ghostty config (work machine)"* ]]
+  [ -L "$HOME/.config/ghostty/config" ]
 }

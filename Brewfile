@@ -32,12 +32,11 @@ end
 cask "antigravity-cli"
 cask "claude-code"
 cask "gcloud-cli"
+cask "ghostty"
+cask "font-jetbrains-mono-nerd-font"
 
 if is_work_machine
   # Menu-bar productivity widget host (.config/swiftbar/prodwatch.60s.sh).
   # install.sh symlinks the plugin and points SwiftBar at it.
   cask "swiftbar"
-else
-  cask "ghostty"
-  cask "font-jetbrains-mono-nerd-font"
 end

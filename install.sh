@@ -509,10 +509,6 @@ install_commands() {
 }
 
 install_ghostty_config() {
-  if is_work_machine; then
-    echo "SKIP  ghostty config (work machine)"
-    return 0
-  fi
   local ghostty_dst="$HOME/.config/ghostty"
   mkdir -p "$ghostty_dst"
   ln -sf "$DOTFILES/ghostty/config" "$ghostty_dst/config"
