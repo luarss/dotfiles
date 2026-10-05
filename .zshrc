@@ -157,9 +157,3 @@ command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
 #             terraform and other ADC consumers pick it up without CLOUDSDK_CONFIG.
 # s-gcloud -> a5x.ai GCP: isolated in its own config dir.
 s-gcloud() { CLOUDSDK_CONFIG="$HOME/.config/gcloud-a5x" command gcloud "$@"; }
-
-if [[ "$OSTYPE" == darwin* ]]; then
-  paste-from-clipboard() { LBUFFER+="$(pbpaste)"; }
-  zle -N paste-from-clipboard
-  bindkey '^V' paste-from-clipboard
-fi
