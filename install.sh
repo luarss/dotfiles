@@ -515,6 +515,33 @@ install_ghostty_config() {
   echo "LINK  $ghostty_dst/config -> $DOTFILES/ghostty/config"
 }
 
+ensure_default() {
+  local domain="$1" key="$2" type="$3" value="$4" expected="$5"
+  if [ "$(defaults read "$domain" "$key" 2>/dev/null)" = "$expected" ]; then
+    return 1
+  fi
+  defaults write "$domain" "$key" "-$type" "$value"
+  echo "SET   $domain $key -> $value"
+}
+
+install_finder_defaults() {
+  if [ -n "${DOTFILES_SKIP_FINDER_DEFAULTS:-}" ]; then
+    echo "SKIP  Finder defaults (DOTFILES_SKIP_FINDER_DEFAULTS)"
+    return
+  fi
+  local changed=0
+  ensure_default com.apple.finder FXPreferredViewStyle string Nlsv Nlsv && changed=1
+  ensure_default com.apple.finder FXPreferredSearchViewStyle string Nlsv Nlsv && changed=1
+  ensure_default com.apple.desktopservices DSDontWriteNetworkStores bool true 1 && changed=1
+  ensure_default com.apple.desktopservices DSDontWriteUSBStores bool true 1 && changed=1
+  if [ "$changed" = 1 ]; then
+    killall Finder 2>/dev/null || true
+    echo "RESTART Finder"
+  else
+    echo "OK    Finder defaults already list view"
+  fi
+}
+
 install_zsh_plugin() {
   local repo="$1"
   local name="${2:-$(basename "$repo" .git)}"
@@ -693,6 +720,8 @@ if [ "$IS_DARWIN" = 1 ]; then
   install_agy_settings
 
   install_ghostty_config
+
+  install_finder_defaults
 
   # Antigravity 2.0 (Desktop Electron app / IDE) settings: global permission grants
   install_antigravity_desktop_settings

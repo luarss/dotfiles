@@ -25,6 +25,7 @@ setup() {
   export DOTFILES_SKIP_NODE_TOOLS=1
   # Skip zsh plugins clone (network-dependent, per-test $HOME)
   export DOTFILES_SKIP_ZSH_PLUGINS=1
+  export DOTFILES_SKIP_FINDER_DEFAULTS=1
 
   # Store original environment
   ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
@@ -398,4 +399,52 @@ EOF
 
   run bash "$INSTALL_SCRIPT"
   [ -L "$HOME/.config/ghostty/config" ]
+}
+
+@test "finder_defaults_written_and_finder_restarted_on_mac" {
+  uname() { echo "Darwin"; }
+  defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
+  killall() { echo "killall $*" >> "$HOME/calls.log"; }
+  export -f uname defaults killall
+  unset DOTFILES_SKIP_FINDER_DEFAULTS
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qx "defaults write com.apple.finder FXPreferredViewStyle -string Nlsv" "$HOME/calls.log"
+  grep -qx "defaults write com.apple.finder FXPreferredSearchViewStyle -string Nlsv" "$HOME/calls.log"
+  grep -qx "defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true" "$HOME/calls.log"
+  grep -qx "defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true" "$HOME/calls.log"
+  grep -qx "killall Finder" "$HOME/calls.log"
+}
+
+@test "finder_not_restarted_when_defaults_already_set" {
+  uname() { echo "Darwin"; }
+  defaults() {
+    echo "defaults $*" >> "$HOME/calls.log"
+    case "$3" in
+      FXPreferred*) echo "Nlsv" ;;
+      DSDontWrite*) echo "1" ;;
+    esac
+  }
+  killall() { echo "killall $*" >> "$HOME/calls.log"; }
+  export -f uname defaults killall
+  unset DOTFILES_SKIP_FINDER_DEFAULTS
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OK    Finder defaults already list view"* ]]
+  ! grep -q "defaults write com.apple.finder" "$HOME/calls.log"
+  ! grep -q "killall Finder" "$HOME/calls.log"
+}
+
+@test "finder_defaults_skipped_on_linux" {
+  uname() { echo "Linux"; }
+  defaults() { echo "defaults $*" >> "$HOME/calls.log"; }
+  killall() { echo "killall $*" >> "$HOME/calls.log"; }
+  export -f uname defaults killall
+  unset DOTFILES_SKIP_FINDER_DEFAULTS
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/calls.log" ]
 }
