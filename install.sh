@@ -476,6 +476,62 @@ PLIST
   fi
 }
 
+install_notes_archive_agent() {
+  if ! is_work_machine; then
+    echo "SKIP  notes-archive agent (non-work machine)"
+    return 0
+  fi
+  local archive_dir="${NOTES_ARCHIVE_DIR:-$HOME/work/archives/notes}"
+  mkdir -p "$archive_dir"
+  echo "MKDIR $archive_dir (register as a Google Drive mirror folder)"
+
+  local label="com.$(id -un).notes-archive"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local script="$DOTFILES/scripts/archive-notes.sh"
+  local logdir="$HOME/.claude/logs"
+  mkdir -p "$HOME/Library/LaunchAgents" "$logdir"
+
+  local weekdays=""
+  local d
+  for d in 1 2 3 4 5; do
+    weekdays+="    <dict><key>Weekday</key><integer>$d</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>10</integer></dict>
+"
+  done
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$script</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+$weekdays  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>$logdir/notes-archive.log</string>
+  <key>StandardErrorPath</key><string>$logdir/notes-archive.log</string>
+</dict>
+</plist>
+PLIST
+  echo "GEN   $plist"
+
+  launchctl unload "$plist" 2>/dev/null || true
+  if launchctl load -w "$plist" 2>/dev/null; then
+    echo "LOAD  $label (weekdays 09:10)"
+  else
+    echo "WARN  could not launchctl load $label — load it manually"
+  fi
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -706,6 +762,8 @@ if [ "$IS_DARWIN" = 1 ]; then
   # Weekday-9:05am session-archive launchd agent (tars transcripts into the
   # Google-Drive-mirrored archive dir; pairs with the SessionEnd hook)
   install_session_archive_agent
+
+  install_notes_archive_agent
 
   # Wednesday-2pm weekly-note cutover agent (self-skips without the vault tool)
   install_weekly_cutover_agent

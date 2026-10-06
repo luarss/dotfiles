@@ -113,6 +113,16 @@ Three defense-in-depth layers:
 
 - **Install:** `install_session_archive_agent` in `install.sh` `mkdir -p`s the archive dir and generates `~/Library/LaunchAgents/com.<user>.session-archive.plist` (weekdays 09:05, just after the session-log agent) — **work machine only**. Logs to `~/.claude/logs/session-archive.log`. **One-time manual step:** in Google Drive → Preferences → *Google Drive* → *Add folder*, register `~/work/archives/claude-sessions` as a **mirror** folder so it syncs. Synced location: https://drive.google.com/drive/u/2/folders/1RRIsRT3jqbWc2tyEnzW5mVZcfdW8BpNR. Skills/hooks are symlinked/copied by the normal install path, so re-run `./install.sh` after editing the hook.
 
+## Notes Vault Archive (Google Drive)
+
+Durable backup of the `~/work/notes` Obsidian vault, including the git-ignored large binaries (`*.pptx`, `*.mp4`, reference PDFs/EMLs) that the vault's git remote no longer holds. Same Drive-mirror mechanism as the Session Transcript Archive, but incremental instead of tarballs.
+
+- **Script:** `scripts/archive-notes.sh` runs `rsync -a --delete` from `~/work/notes` into `<archive>/current/`. Files that are overwritten or deleted in the vault are moved to `<archive>/versions/<YYYY-MM-DD>/` (`--backup --backup-dir`), so nothing is ever lost and unchanged files are never re-uploaded.
+- **Excluded:** `.git/`, `.venv-pptx/`, `.scratch/`, the `.claude` symlink (Drive does not sync symlinks; `.agents/` is copied), `.trash/`, caches, `.DS_Store`, `.obsidian/workspace*`, `*.swp`.
+- **Env knobs:** `NOTES_ARCHIVE_DIR` (default `~/work/archives/notes`), `NOTES_ARCHIVE_SOURCE_DIR` (default `~/work/notes`), `NOTES_ARCHIVE_DRY_RUN=1` (rsync `--dry-run`, writes nothing).
+- **Install:** `install_notes_archive_agent` in `install.sh` creates the archive dir and generates `~/Library/LaunchAgents/com.<user>.notes-archive.plist` (weekdays 09:10) — **work machine only**. Logs to `~/.claude/logs/notes-archive.log`. **One-time manual step:** register `~/work/archives/notes` in Google Drive for Desktop as a **mirror** folder (real directory, not a symlink; see the mirror rationale above).
+- **Tests:** `tests/notes-archive.bats`.
+
 ## Security
 
 File access boundaries, protected patterns, and command deny lists are centralized in `file-permissions.json` — the **single source of truth** across Claude Code, Antigravity CLI, and Antigravity 2.0 Desktop.
