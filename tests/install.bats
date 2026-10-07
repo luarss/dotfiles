@@ -93,8 +93,8 @@ teardown() {
   # Personal (non-work) machine: model forced to sonnet regardless of OS
   [ "$(jq -r '.model' "$HOME/.claude/settings.json")" = "sonnet" ]
 
-  # The 5-hook PreToolUse chain + symlink-memory PostToolUse are present...
-  [ "$(jq '[.hooks.PreToolUse[].hooks[].command] | length' "$HOME/.claude/settings.json")" -eq 6 ]
+  # The 8-hook PreToolUse chain + symlink-memory PostToolUse are present...
+  [ "$(jq '[.hooks.PreToolUse[].hooks[].command] | length' "$HOME/.claude/settings.json")" -eq 9 ]
   [ "$(jq '.hooks.PostToolUse[0].hooks[0].command' "$HOME/.claude/settings.json")" = '"bash ~/.claude/hooks/symlink-memory.sh"' ]
 
   # ...but the deepseek-only guard must NOT be wired into the default profile

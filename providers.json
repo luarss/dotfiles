@@ -17,6 +17,9 @@
               { "type": "command", "command": "bash ~/.claude/hooks/db-guard.sh" },
               { "type": "command", "command": "bash ~/.claude/hooks/db-rate-limit.sh" },
               { "type": "command", "command": "bash ~/.claude/hooks/skill-scan-guard.sh" },
+              { "type": "command", "if": "Bash(git commit *)", "command": "bash ~/.claude/hooks/no-claude-trailer.sh" },
+              { "type": "command", "if": "Bash(rtk git commit *)", "command": "bash ~/.claude/hooks/no-claude-trailer.sh" },
+              { "type": "command", "if": "Bash(git -C * commit *)", "command": "bash ~/.claude/hooks/no-claude-trailer.sh" },
               { "type": "command", "command": "bash ~/.claude/hooks/rtk-hook.sh" }
             ]
           },
