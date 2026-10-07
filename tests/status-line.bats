@@ -305,6 +305,37 @@ stub_fetch() {
   [ "$(cat "$USAGE_CACHE")" = "{}" ]
 }
 
+@test "Fable limit hidden once cached reset time has passed" {
+  usage_response 14 | jq '.limits[1].resets_at = "2020-01-01T00:00:00.123+00:00"' > "$USAGE_CACHE"
+  FETCH_CMD="false"
+  out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
+  [[ "$out" == *"7d"* ]]
+  [[ "$out" != *"Fable"* ]]
+}
+
+@test "failed fetch increments the failure count" {
+  FETCH_CMD="false"
+  sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" >/dev/null
+  [ "$(cat "$USAGE_CACHE.failures")" = "1" ]
+}
+
+@test "successful fetch clears the failure count" {
+  echo 3 > "$USAGE_CACHE.failures"
+  stub_fetch 9
+  sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" >/dev/null
+  [ ! -f "$USAGE_CACHE.failures" ]
+}
+
+@test "stale cache is not refreshed while backing off after failures" {
+  usage_response 42 > "$USAGE_CACHE"
+  touch -t "$(date -r $(( $(now) - 400 )) +%Y%m%d%H%M.%S)" "$USAGE_CACHE"
+  echo 2 > "$USAGE_CACHE.failures"
+  FETCH_CMD="echo fetched > '$WORKDIR/called'; false"
+  sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" >/dev/null
+  sleep 0.2
+  [ ! -f "$WORKDIR/called" ]
+}
+
 @test "Fable reset shown in full form" {
   stub_fetch 9
   plain=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" | sed -E $'s/\033\\[[0-9;]*m//g')

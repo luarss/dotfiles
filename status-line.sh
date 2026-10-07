@@ -48,8 +48,10 @@ SEVEN_DAY_WINDOW=604800
 PROJECT_MIN_ELAPSED_FRAC=0.02
 
 USAGE_ENDPOINT="https://api.anthropic.com/api/oauth/usage"
-USAGE_CACHE_TTL=60
+USAGE_CACHE_TTL=300
+USAGE_MAX_BACKOFF=1800
 USAGE_CACHE_FILE="${CLAUDE_USAGE_CACHE:-${TMPDIR:-/tmp}/claude-statusline-usage.json}"
+USAGE_FAILURES_FILE="${USAGE_CACHE_FILE}.failures"
 
 # Cache hit rate thresholds.
 # ~90% is the healthy target on active sessions; the Claude Code team alerts
@@ -332,11 +334,32 @@ refresh_usage_cache() {
     if fetch_usage > "$temp_file" 2>/dev/null &&
        jq -e '.limits | type == "array"' "$temp_file" >/dev/null 2>&1; then
         mv "$temp_file" "$USAGE_CACHE_FILE"
+        rm -f "$USAGE_FAILURES_FILE"
         return 0
     fi
 
     rm -f "$temp_file"
+    echo $(( $(read_failure_count) + 1 )) > "$USAGE_FAILURES_FILE"
     [[ -f "$USAGE_CACHE_FILE" ]] || echo '{}' > "$USAGE_CACHE_FILE"
+}
+
+read_failure_count() {
+    local count
+    count=$(cat "$USAGE_FAILURES_FILE" 2>/dev/null)
+    [[ "$count" =~ ^[0-9]+$ ]] || count=0
+    echo "$count"
+}
+
+usage_refresh_interval() {
+    local failures interval
+    failures=$(read_failure_count)
+    interval=$USAGE_CACHE_TTL
+    while (( failures > 0 && interval < USAGE_MAX_BACKOFF )); do
+        interval=$(( interval * 2 ))
+        failures=$(( failures - 1 ))
+    done
+    (( interval > USAGE_MAX_BACKOFF )) && interval=$USAGE_MAX_BACKOFF
+    echo "$interval"
 }
 
 file_age_seconds() {
@@ -355,7 +378,7 @@ ensure_usage_cache() {
         return 0
     fi
 
-    if [[ $(file_age_seconds "$USAGE_CACHE_FILE") -ge $USAGE_CACHE_TTL ]]; then
+    if [[ $(file_age_seconds "$USAGE_CACHE_FILE") -ge $(usage_refresh_interval) ]]; then
         touch "$USAGE_CACHE_FILE"
         ( refresh_usage_cache </dev/null >/dev/null 2>&1 & )
     fi
@@ -363,14 +386,12 @@ ensure_usage_cache() {
 
 read_model_scoped_limits() {
     [[ -f "$USAGE_CACHE_FILE" ]] || return 0
-    jq -r '
+    jq -r --argjson now "$(date +%s)" '
         .limits[]?
         | select(.kind == "weekly_scoped" and .scope.model.display_name != null)
-        | [
-            .scope.model.display_name,
-            (.percent // 0),
-            ((.resets_at // "") | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | (try fromdateiso8601 catch ""))
-          ]
+        | ((.resets_at // "") | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | (try fromdateiso8601 catch "")) as $reset_at
+        | select(($reset_at | type) != "number" or $reset_at > $now)
+        | [.scope.model.display_name, (.percent // 0), $reset_at]
         | @tsv
     ' "$USAGE_CACHE_FILE" 2>/dev/null
 }
