@@ -306,7 +306,10 @@ project_7d_usage() {
 
 read_oauth_token() {
     if [[ "$OSTYPE" == darwin* ]]; then
-        security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null
+        local config_dir_hash
+        config_dir_hash=$(printf %s "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" | shasum -a 256 | cut -c1-8)
+        security find-generic-password -s "Claude Code-credentials-$config_dir_hash" -w 2>/dev/null ||
+            security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null
     else
         cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json" 2>/dev/null
     fi | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null
