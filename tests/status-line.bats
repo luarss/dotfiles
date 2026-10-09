@@ -43,6 +43,10 @@ vislen() {
 
 now() { date +%s; }
 
+touch_stamp() {
+  date -d "@$1" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$1" +%Y%m%d%H%M.%S
+}
+
 main_line() { printf '%s\n' "$1" | sed -n 1p; }
 usage_line() { printf '%s\n' "$1" | sed -n 2p; }
 
@@ -328,7 +332,7 @@ stub_fetch() {
 
 @test "stale cache is not refreshed while backing off after failures" {
   usage_response 42 > "$USAGE_CACHE"
-  touch -t "$(date -r $(( $(now) - 400 )) +%Y%m%d%H%M.%S)" "$USAGE_CACHE"
+  touch -t "$(touch_stamp $(( $(now) - 400 )))" "$USAGE_CACHE"
   echo 2 > "$USAGE_CACHE.failures"
   FETCH_CMD="echo fetched > '$WORKDIR/called'; false"
   sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" >/dev/null
