@@ -32,6 +32,11 @@ run_command() {
   [ "$status" -eq 2 ]
 }
 
+@test "blocks absolute-path git commit chained after git add" {
+  run_command $'/usr/bin/git add a && /usr/bin/git commit -q -F - <<\'EOF\'\nfix: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF'
+  [ "$status" -eq 2 ]
+}
+
 @test "allows git commit without trailer" {
   run_command 'git commit -m "fix: x"'
   [ "$status" -eq 0 ]
@@ -57,12 +62,16 @@ run_command() {
   [ "$status" -eq 0 ]
 }
 
-@test "settings.base.json wires the hook for git commit variants" {
-  run jq -r '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("no-claude-trailer")) | .if' "$REPO_ROOT/settings.base.json"
+@test "settings.base.json wires the hook unconditionally on every Bash call" {
+  run jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("no-claude-trailer"))] | (length == 1) and all(has("if") | not)' "$REPO_ROOT/settings.base.json"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Bash(git commit *)"* ]]
-  [[ "$output" == *"Bash(rtk git commit *)"* ]]
-  [[ "$output" == *"Bash(git -C * commit *)"* ]]
+  [ "$output" = "true" ]
+}
+
+@test "default profile overrides wire the hook unconditionally" {
+  run jq -r '[.[] | select(.dir == ".claude") | .overrides.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("no-claude-trailer"))] | (length == 1) and all(has("if") | not)' "$REPO_ROOT/providers.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
 }
 
 @test "default profile overrides also wire the hook before rtk" {
