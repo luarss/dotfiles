@@ -135,11 +135,6 @@ export PATH="$HOME/.local/bin:$PATH"
 # Homebrew (macOS) — both Apple Silicon (/opt) and Intel (/usr/local)
 [[ "$OSTYPE" == darwin* ]] && export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-# rtk (Rust Token Killer) — opt out of telemetry for all terminal use too.
-# In-Claude sessions get this via the default profile's settings.json env; this
-# covers manual `rtk gain`/`rtk discover` runs in the shell.
-export RTK_TELEMETRY_DISABLED=1
-
 # ------ N-Claude profile system ----
 # Wrappers (`cl <provider>` dispatcher + claude/s-claude/d-claude aliases) are
 # generated from providers.json by install.sh into ~/.claude-profiles.zsh.

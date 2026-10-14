@@ -17,7 +17,6 @@ brew "zoxide"
 brew "p7zip"
 brew "ffmpeg"
 brew "hashicorp/tap/terraform"
-brew "rtk"
 
 if is_work_machine
   # Supply-chain scanner for the work-laptop skill-scan guard

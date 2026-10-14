@@ -4,7 +4,7 @@
 # $LIMIT qualifying calls happen within the last $WINDOW seconds.
 #
 # Covers two call types (registered on matchers "Bash" and "mcp__.*mysql.*"
-# in settings.base.json + the rtk override in providers.json):
+# in settings.base.json + the default-profile override in providers.json):
 #   - mysql / mariadb CLI invoked to run a statement via the Bash tool
 #   - mcp__*mysql* MCP tool calls
 #

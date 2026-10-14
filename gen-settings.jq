@@ -30,7 +30,6 @@ def claude_permissions($p):
         {
           deny: (
             (($p.deny.commands // []) | map("Bash(\(.))"))
-            + (($p.deny.claude_rtk // []) | map("Bash(rtk " + . + ")"))
             + (($p.deny.files // []) | map("Read(\(.))"))
           ),
           defaultMode: "default"

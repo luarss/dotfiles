@@ -7,7 +7,7 @@
     "overrides": {
       "model": "claude-opus-5-5[1m]",
       "effortLevel": "medium",
-      "env": { "RTK_TELEMETRY_DISABLED": "1", "SHOW_USAGE_LIMITS": "1" },
+      "env": { "SHOW_USAGE_LIMITS": "1" },
       "hooks": {
         "PreToolUse": [
           {
@@ -16,8 +16,7 @@
               { "type": "command", "command": "bash ~/.claude/hooks/db-guard.sh" },
               { "type": "command", "command": "bash ~/.claude/hooks/db-rate-limit.sh" },
               { "type": "command", "command": "bash ~/.claude/hooks/skill-scan-guard.sh" },
-              { "type": "command", "command": "bash ~/.claude/hooks/no-claude-trailer.sh" },
-              { "type": "command", "command": "bash ~/.claude/hooks/rtk-hook.sh" }
+              { "type": "command", "command": "bash ~/.claude/hooks/no-claude-trailer.sh" }
             ]
           },
           {

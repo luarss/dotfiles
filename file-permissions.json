@@ -64,20 +64,6 @@
     "commands": [
       "rm -rf:*",
       "rm -fr:*"
-    ],
-    "claude_rtk": [
-      "*.env",
-      "*.pem*",
-      "*.key*",
-      "*.cnf*",
-      "*.ssh/*",
-      "*.aws/*",
-      "*.config/gcloud/*",
-      "*.zsh_history*",
-      "*.bash_history*",
-      "*.sh_history*",
-      "*.zhistory*",
-      "*.history*"
     ]
   },
   "allow": {

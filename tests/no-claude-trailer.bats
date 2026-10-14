@@ -17,11 +17,6 @@ run_command() {
   [[ "$output" == *BLOCKED* ]]
 }
 
-@test "blocks rtk-wrapped git commit with trailer" {
-  run_command 'rtk git commit -m "fix: x" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"'
-  [ "$status" -eq 2 ]
-}
-
 @test "blocks git -C commit with trailer" {
   run_command 'git -C /tmp/repo commit -m "fix: x" -m "co-authored-by: claude"'
   [ "$status" -eq 2 ]
@@ -70,12 +65,6 @@ run_command() {
 
 @test "default profile overrides wire the hook unconditionally" {
   run jq -r '[.[] | select(.dir == ".claude") | .overrides.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("no-claude-trailer"))] | (length == 1) and all(has("if") | not)' "$REPO_ROOT/providers.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "true" ]
-}
-
-@test "default profile overrides also wire the hook before rtk" {
-  run jq -r '.[] | select(.dir == ".claude") | .overrides.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks | map(.command) | (map(contains("no-claude-trailer")) | index(true)) < (map(contains("rtk-hook")) | index(true))' "$REPO_ROOT/providers.json"
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
 }

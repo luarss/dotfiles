@@ -3,8 +3,7 @@
 # Scans a Claude plugin/skill with Trivy BEFORE it is installed, blocking the
 # install when the scanner reports a finding.
 #
-# Wired ONLY into the default (.claude) profile via providers.json overrides
-# (listed before `rtk hook claude` so it inspects the original command).
+# Wired ONLY into the default (.claude) profile via providers.json overrides.
 # Exit codes: 0 = allow, 2 = block.
 #
 # Gating — WORK LAPTOP ONLY. If `hostname -s` != $DOTFILES_WORK_HOSTNAME

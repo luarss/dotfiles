@@ -8,7 +8,7 @@
 - `~/.claude/settings.json` — default profile only
 - `~/.claude` hooks, skills, and commands
 
-Skipped (Darwin-only): second/third profiles and the `cl` dispatcher, plugin lock, zsh plugins, npm tools, launchd agents, Antigravity, Ghostty, Finder defaults, rtk.
+Skipped (Darwin-only): second/third profiles and the `cl` dispatcher, plugin lock, zsh plugins, npm tools, launchd agents, Antigravity, Ghostty, Finder defaults.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ Notes:
 
 - The sandbox's git proxy may only authorize repos selected for the session. If the repo is private and the clone fails, either make it public or add it to the session and point `DOTFILES` at its checkout path.
 - `|| echo` keeps a failed install from blocking session start.
-- rtk's hook no-ops on non-Darwin; the security guards and `no-claude-trailer.sh` still apply.
+- The security guards and `no-claude-trailer.sh` still apply.
 
 ## Regular Linux machines
 

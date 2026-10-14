@@ -33,9 +33,7 @@ symlink() {
 # built to avoid. A real file with a source line sidesteps it: bwrap only
 # needs to resolve the two concrete paths involved (~/.zshrc itself and
 # $DOTFILES/.zshrc), not walk a symlink to a directory that may not be
-# mounted yet. RTK.md and the rtk hook stay Darwin-only regardless (see
-# generate_profiles / providers.json) since rtk itself is a Homebrew-only
-# binary — .zshrc has no rtk-specific content to begin with.
+# mounted yet.
 setup_zsh_config() {
   if [ "$(uname)" = "Linux" ]; then
     local dst="$HOME/.zshrc"
@@ -76,18 +74,9 @@ generate_profiles() {
     [ -n "$token_var" ] && token="${!token_var:-}"
 
     mkdir -p "$HOME/$dir"
-    # RTK.md is macOS-only (rtk is a Homebrew package). On macOS with an RTK
-    # profile, generate AGENTS.md with @RTK.md appended; everywhere else,
-    # symlink AGENTS.md as-is. (CLAUDE.md is gone — `instructionFiles:
-    # "claude-md-or-agents-md"` loads AGENTS.md directly when CLAUDE.md is absent.)
-    if [ "$(uname)" = "Darwin" ] && [ -e "$DOTFILES/$dir/RTK.md" ]; then
-      symlink "$dir/RTK.md"
-      rm -f "$HOME/$dir/AGENTS.md"
-      { cat "$DOTFILES/$dir/AGENTS.md"; printf '\n@RTK.md\n'; } > "$HOME/$dir/AGENTS.md"
-      echo "GEN   $HOME/$dir/AGENTS.md (darwin+rtk)"
-    else
-      symlink "$dir/AGENTS.md"
-    fi
+    # CLAUDE.md is gone — `instructionFiles: "claude-md-or-agents-md"` loads
+    # AGENTS.md directly when CLAUDE.md is absent.
+    symlink "$dir/AGENTS.md"
     ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
     ln -sf "$DOTFILES/models.json" "$HOME/$dir/models.json"
@@ -651,11 +640,11 @@ install_node_tools() {
 
 # Antigravity CLI (`agy`, Google's agentic dev tool) settings: telemetry off,
 # no extraneous AI nudges (tips banner/feedback surveys/notifications) — same
-# policy as the rtk/Claude telemetry opt-outs elsewhere in this repo. Merged
+# policy as the Claude telemetry opt-outs elsewhere in this repo. Merged
 # in-place with jq rather than symlinked, because the live file also carries
 # state the app itself writes (trustedWorkspaces, gcp.project) that a
 # straight overwrite would destroy. Homebrew-cask-only (see Brewfile), so
-# Darwin-gated like rtk.
+# Darwin-gated.
 install_agy_settings() {
   local dst="$HOME/.gemini/antigravity-cli/settings.json"
   mkdir -p "$(dirname "$dst")"

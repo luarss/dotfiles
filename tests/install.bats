@@ -93,8 +93,8 @@ teardown() {
   # Personal (non-work) machine: model forced to sonnet regardless of OS
   [ "$(jq -r '.model' "$HOME/.claude/settings.json")" = "sonnet" ]
 
-  # The 5-hook Bash PreToolUse chain + mysql rate limiter + symlink-memory PostToolUse are present...
-  [ "$(jq '[.hooks.PreToolUse[].hooks[].command] | length' "$HOME/.claude/settings.json")" -eq 6 ]
+  # The 4-hook Bash PreToolUse chain + mysql rate limiter + symlink-memory PostToolUse are present...
+  [ "$(jq '[.hooks.PreToolUse[].hooks[].command] | length' "$HOME/.claude/settings.json")" -eq 5 ]
   [ "$(jq '.hooks.PostToolUse[0].hooks[0].command' "$HOME/.claude/settings.json")" = '"bash ~/.claude/hooks/symlink-memory.sh"' ]
 
   # ...but the deepseek-only guard must NOT be wired into the default profile
@@ -142,19 +142,6 @@ teardown() {
   [ "$status" -eq 0 ]
   [ ! -L "$HOME/.zshrc" ]
   grep -qF "source \"$dotfiles/.zshrc\"" "$HOME/.zshrc"
-}
-
-@test "setup_zsh_config_excludes_rtk_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  # RTK.md/rtk are Homebrew/macOS-only — they must stay out of the Linux path
-  # even though ~/.zshrc itself is now installed there
-  [ ! -e "$HOME/.claude/RTK.md" ]
-  [[ "$(cat "$HOME/.claude/AGENTS.md" 2>/dev/null)" != *RTK.md* ]]
 }
 
 # --- macOS: real install path (uname mocked to Darwin) ---
@@ -333,10 +320,7 @@ EOF
   [ "$agy_deny_len" -eq "$((num_files + num_cmds))" ]
   [ "$desktop_deny_len" -eq "$((num_files + num_cmds))" ]
 
-  # Claude deny includes files + commands + claude_rtk
-  local num_rtk
-  num_rtk="$(jq '.deny.claude_rtk | length' "$manifest")"
-  [ "$claude_deny_len" -eq "$((num_files + num_cmds + num_rtk))" ]
+  [ "$claude_deny_len" -eq "$((num_files + num_cmds))" ]
 
   # Parity on allow commands
   [ "$(echo "$claude_json" | jq -r '.permissions.allow[0]')" = "Bash(ccusage)" ]
