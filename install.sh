@@ -213,8 +213,8 @@ PLIST
 
 # Wednesday-2pm launchd agent that cuts the weekly note over: runs the vault's
 # own tools/new-week.sh --next 2, which ensures this cycle's note exists and
-# creates next Wednesday's (note + deck + Index.md row, all idempotent). /done
-# and daily-session-log.sh target the latest ISO-week note, so creating next
+# creates next Wednesday's (note + deck + Index.md row, all idempotent).
+# daily-session-log.sh targets the latest ISO-week note, so creating next
 # week's file IS the cutover. --next 2 also self-heals a missed Wednesday: a
 # late (post-wake) run still covers the upcoming Wednesday and the one after.
 install_weekly_cutover_agent() {

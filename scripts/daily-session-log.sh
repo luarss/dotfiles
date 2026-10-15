@@ -3,12 +3,10 @@
 # session run under ~/work into the latest weekly note and pushes it to the base
 # branch directly (no PR).
 #
-# It is the batch, non-interactive counterpart to the /done skill. /done can't run
-# in cron: it needs a model to summarize a conversation and it confirms before
-# writing. So this script keeps the deterministic parts in shell (which sessions,
-# dedup, weekly-note resolution, git, push) and delegates ONLY the summary of each
+# The script keeps the deterministic parts in shell (which sessions, dedup,
+# weekly-note resolution, git, push) and delegates ONLY the summary of each
 # session to the local `agy` agent CLI in non-interactive print mode (`agy -p`) —
-# one call per session, mirroring /done. agy carries its own cached auth (no
+# one call per session. agy carries its own cached auth (no
 # per-job API key to manage) and reports token usage as structured JSON, which
 # feeds the cost audit below.
 #
@@ -281,7 +279,7 @@ git -C "$NOTES_REPO" fetch --quiet origin "$base" || die "git fetch failed"
 WORKTREE="$SCRATCH/wt"
 git -C "$NOTES_REPO" worktree add --quiet --detach "$WORKTREE" "origin/$base"
 
-# Resolve the target weekly note INSIDE the worktree (same rule as /done).
+# Resolve the target weekly note INSIDE the worktree.
 weekly_dir="$WORKTREE/$WEEKLY_SUBPATH"
 [ -d "$weekly_dir" ] || die "weekly dir missing in repo: $WEEKLY_SUBPATH"
 week="$(ls "$weekly_dir"/[0-9]*-W[0-9]*.md 2>/dev/null \
