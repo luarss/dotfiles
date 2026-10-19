@@ -106,6 +106,14 @@ PY
 ) &
 TEMP_PID=$!
 
+DISK_RAW="$(mktemp)"
+(
+  smart_status="$(diskutil info disk0 2>/dev/null | awk -F': *' '/SMART Status/{print $2; exit}')"
+  read -r disk_free disk_used_percent < <(df -h /System/Volumes/Data 2>/dev/null | awk 'NR==2{print $4, $5}')
+  printf '%s\t%s\t%s\n' "$smart_status" "$disk_free" "${disk_used_percent%\%}" >"$DISK_RAW"
+) &
+DISK_PID=$!
+
 # --- Git: scan a base dir; one numstat pass per repo, count commits + sum lines.
 # Populates globals: g_commits g_add g_del g_rows (safe if $1 doesn't exist —
 # the unmatched glob fails the .git guard and the loop body is skipped).
@@ -186,8 +194,30 @@ gh_opened="${gh_opened:-0}"; gh_closed="${gh_closed:-0}"
 wait "$TEMP_PID" 2>/dev/null
 IFS=$'\t' read -r soc_avg soc_max < "$TEMP_RAW" 2>/dev/null
 rm -f "$TEMP_RAW"
-temp_title=""
-[ -n "$soc_avg" ] && temp_title=" · ${soc_avg}°C"
+
+wait "$DISK_PID" 2>/dev/null
+IFS=$'\t' read -r smart_status disk_free disk_used_percent < "$DISK_RAW" 2>/dev/null
+rm -f "$DISK_RAW"
+disk_alert=""
+case "$smart_status" in
+  ""|Verified|"Not Supported") ;;
+  *) disk_alert=1 ;;
+esac
+[ "${disk_used_percent:-0}" -gt 90 ] 2>/dev/null && disk_alert=1
+disk_free_percent=""
+[[ "$disk_used_percent" =~ ^[0-9]+$ ]] && disk_free_percent=$((100 - disk_used_percent))
+system_parts=()
+[ -n "$soc_avg" ] && system_parts+=("${soc_avg}°C")
+if [ -n "$disk_free_percent" ]; then
+  system_parts+=("💾 ${disk_free_percent}% free")
+elif [ -n "$disk_free" ]; then
+  system_parts+=("💾 ${disk_free} free")
+fi
+[ -n "$disk_alert" ] && system_parts+=("⚠️ disk")
+system_title=""
+for part in "${system_parts[@]}"; do
+  system_title+="${system_title:+ · }${part}"
+done
 
 # --- Render a "base<TAB>commits<TAB>add<TAB>del" repo table under a heading ---
 print_section() {
@@ -204,10 +234,11 @@ print_section() {
 }
 
 # ================= SwiftBar output =================
-# Two title lines before the first "---" cycle (rotate ~5s) in the menu bar —
+# Title lines before the first "---" cycle (rotate ~5s) in the menu bar —
 # narrower than one long line, since the menu bar can't stack rows vertically.
-echo "<> ${total_commits} · 🐛 ↑${gh_opened}/↓${gh_closed}${temp_title} | font=Menlo size=13"
+echo "<> ${total_commits} · 🐛 ↑${gh_opened}/↓${gh_closed} | font=Menlo size=13"
 echo "\$${tot_cost} · ${tot_htok} | font=Menlo size=13"
+[ -n "$system_title" ] && echo "${system_title} | font=Menlo size=13"
 echo "---"
 print_section "Work today" "$WORK" "$work_commits" "$work_add" "$work_del" "$work_rows"
 echo "---"
@@ -220,6 +251,13 @@ echo "Antigravity today · \$${a_cost} · ${a_htok} tok | font=Menlo"
 echo "Issues today · ↑${gh_opened} opened · ↓${gh_closed} closed | font=Menlo"
 echo "author or assignee · github.com/luarss | font=Menlo size=12 color=gray href=https://github.com/luarss"
 [ -n "$soc_avg" ] && echo "SoC temp · avg ${soc_avg}°C · max ${soc_max}°C | font=Menlo"
+if [ -n "$smart_status" ] || [ -n "$disk_free" ]; then
+  disk_line="Disk · SMART ${smart_status:-unknown}"
+  [ -n "$disk_free" ] && disk_line+=" · ${disk_free} free${disk_free_percent:+ (${disk_free_percent}%)}"
+  disk_style="font=Menlo"
+  [ -n "$disk_alert" ] && disk_style+=" color=red"
+  echo "${disk_line} | ${disk_style}"
+fi
 echo "---"
 echo "Updated $(date +%H:%M) | size=11 color=gray"
 echo "Refresh | refresh=true"

@@ -12,6 +12,33 @@ teardown() {
   rm -rf "$TEST_DIR"
 }
 
+stub_disk() {
+  local stub_dir="$1" smart_status="$2" disk_free="$3" disk_used_percent="$4"
+  cat > "$stub_dir/diskutil" <<EOF
+#!/bin/bash
+[ -n "$smart_status" ] && echo "   SMART Status:              $smart_status"
+exit 0
+EOF
+  cat > "$stub_dir/df" <<EOF
+#!/bin/bash
+[ -n "$disk_free" ] || exit 1
+echo "Filesystem Size Used Avail Capacity iused ifree %iused Mounted on"
+echo "/dev/disk3s5 926Gi 800Gi $disk_free ${disk_used_percent}% 5.5M 1.3G 0% /System/Volumes/Data"
+EOF
+  chmod +x "$stub_dir/diskutil" "$stub_dir/df"
+}
+
+stub_quiet_sources() {
+  local stub_dir="$1"
+  cat > "$stub_dir/ccusage" <<'EOF'
+#!/bin/bash
+echo '{"daily":[{"agent":"all","totalCost":0,"totalTokens":0,"agents":[]}]}'
+EOF
+  printf '#!/bin/bash\nexit 0\n' > "$stub_dir/gh"
+  printf '#!/bin/bash\ncat >/dev/null\n' > "$stub_dir/python3"
+  chmod +x "$stub_dir/ccusage" "$stub_dir/gh" "$stub_dir/python3"
+}
+
 # Helper to run the node parser snippet directly on a JSON string
 parse_usage() {
   local json="$1"
@@ -240,6 +267,8 @@ printf '45\t49\n'
 EOF
   chmod +x "$stub_dir/python3"
 
+  stub_disk "$stub_dir" "Verified" "124Gi" "87"
+
   # Run prodwatch with empty WORK/PROJECTS and stubbed ccusage
   local fake_home="$TEST_DIR/home"
   mkdir -p "$fake_home/work" "$fake_home/projects"
@@ -247,9 +276,12 @@ EOF
   run env HOME="$fake_home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
   [ "$status" -eq 0 ]
 
-  # Check menubar header (two cycling title lines): commits + issue counts, then cost/tokens
-  [[ "$output" =~ "<> 0 · 🐛 ↑3/↓1 · 45°C | font=Menlo size=13" ]]
+  # Check menubar header (three cycling title lines): commits + issues, cost/tokens, temp/disk
+  [[ "$output" =~ "<> 0 · 🐛 ↑3/↓1 | font=Menlo size=13" ]]
+  [[ "$output" =~ "45°C · 💾 13% free | font=Menlo size=13" ]]
   [[ "$output" =~ "SoC temp · avg 45°C · max 49°C | font=Menlo" ]]
+  [[ "$output" =~ "Disk · SMART Verified · 124Gi free (13%) | font=Menlo" ]]
+  [[ ! "$output" =~ "⚠️ disk" ]]
   [[ "$output" =~ "\$5.57 · 2.9M | font=Menlo size=13" ]]
 
   # Check issues dropdown section
@@ -286,6 +318,8 @@ cat >/dev/null
 EOF
   chmod +x "$stub_dir/python3"
 
+  stub_disk "$stub_dir" "Verified" "124Gi" "87"
+
   local fake_home="$TEST_DIR/home"
   mkdir -p "$fake_home/work" "$fake_home/projects"
 
@@ -294,4 +328,41 @@ EOF
   [[ "$output" =~ "<> 0 · 🐛 ↑0/↓0 | font=Menlo size=13" ]]
   [[ "$output" =~ "Issues today · ↑0 opened · ↓0 closed | font=Menlo" ]]
   [[ ! "$output" =~ "°C" ]]
+}
+
+@test "prodwatch flags a failing SMART status in red and in the title" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "Failing" "124Gi" "50"
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "💾 50% free · ⚠️ disk | font=Menlo size=13" ]]
+  [[ "$output" =~ "Disk · SMART Failing · 124Gi free (50%) | font=Menlo color=red" ]]
+}
+
+@test "prodwatch flags a disk over 90% full" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "Verified" "40Gi" "96"
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "💾 4% free · ⚠️ disk | font=Menlo size=13" ]]
+  [[ "$output" =~ "Disk · SMART Verified · 40Gi free (4%) | font=Menlo color=red" ]]
+}
+
+@test "prodwatch omits the disk line when disk tools return nothing" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "<> 0 · 🐛 ↑0/↓0 | font=Menlo size=13" ]]
+  [[ ! "$output" =~ "Disk ·" ]]
+  [[ ! "$output" =~ "💾" ]]
 }
