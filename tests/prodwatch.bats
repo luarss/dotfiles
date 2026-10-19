@@ -233,6 +233,13 @@ fi
 EOF
   chmod +x "$stub_dir/gh"
 
+  cat > "$stub_dir/python3" <<'EOF'
+#!/bin/bash
+cat >/dev/null
+printf '45\t49\n'
+EOF
+  chmod +x "$stub_dir/python3"
+
   # Run prodwatch with empty WORK/PROJECTS and stubbed ccusage
   local fake_home="$TEST_DIR/home"
   mkdir -p "$fake_home/work" "$fake_home/projects"
@@ -241,7 +248,8 @@ EOF
   [ "$status" -eq 0 ]
 
   # Check menubar header (two cycling title lines): commits + issue counts, then cost/tokens
-  [[ "$output" =~ "<> 0 · 🐛 ↑3/↓1 | font=Menlo size=13" ]]
+  [[ "$output" =~ "<> 0 · 🐛 ↑3/↓1 · 45°C | font=Menlo size=13" ]]
+  [[ "$output" =~ "SoC temp · avg 45°C · max 49°C | font=Menlo" ]]
   [[ "$output" =~ "\$5.57 · 2.9M | font=Menlo size=13" ]]
 
   # Check issues dropdown section
@@ -272,6 +280,12 @@ exit 0
 EOF
   chmod +x "$stub_dir/gh"
 
+  cat > "$stub_dir/python3" <<'EOF'
+#!/bin/bash
+cat >/dev/null
+EOF
+  chmod +x "$stub_dir/python3"
+
   local fake_home="$TEST_DIR/home"
   mkdir -p "$fake_home/work" "$fake_home/projects"
 
@@ -279,4 +293,5 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" =~ "<> 0 · 🐛 ↑0/↓0 | font=Menlo size=13" ]]
   [[ "$output" =~ "Issues today · ↑0 opened · ↓0 closed | font=Menlo" ]]
+  [[ ! "$output" =~ "°C" ]]
 }

@@ -38,6 +38,74 @@ GH_RAW="$(mktemp)"
 ) &
 GH_PID=$!
 
+TEMP_RAW="$(mktemp)"
+( python3 - >"$TEMP_RAW" 2>/dev/null <<'PY'
+import ctypes, ctypes.util
+iokit = ctypes.CDLL(ctypes.util.find_library("IOKit"))
+cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+vp = ctypes.c_void_p
+UTF8 = 0x08000100
+TEMPERATURE_EVENT = 15
+
+def bind(lib, name, restype, argtypes):
+    function = getattr(lib, name)
+    function.restype = restype
+    function.argtypes = argtypes
+    return function
+
+client_create = bind(iokit, "IOHIDEventSystemClientCreate", vp, [vp])
+client_set_matching = bind(iokit, "IOHIDEventSystemClientSetMatching", ctypes.c_int, [vp, vp])
+client_copy_services = bind(iokit, "IOHIDEventSystemClientCopyServices", vp, [vp])
+service_copy_property = bind(iokit, "IOHIDServiceClientCopyProperty", vp, [vp, vp])
+service_copy_event = bind(iokit, "IOHIDServiceClientCopyEvent", vp, [vp, ctypes.c_int64, ctypes.c_int32, ctypes.c_int64])
+event_get_float = bind(iokit, "IOHIDEventGetFloatValue", ctypes.c_double, [vp, ctypes.c_int32])
+string_create = bind(cf, "CFStringCreateWithCString", vp, [vp, ctypes.c_char_p, ctypes.c_uint32])
+string_get = bind(cf, "CFStringGetCString", ctypes.c_bool, [vp, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32])
+number_create = bind(cf, "CFNumberCreate", vp, [vp, ctypes.c_int, vp])
+dictionary_create = bind(cf, "CFDictionaryCreate", vp, [vp, vp, vp, ctypes.c_long, vp, vp])
+array_count = bind(cf, "CFArrayGetCount", ctypes.c_long, [vp])
+array_get = bind(cf, "CFArrayGetValueAtIndex", vp, [vp, ctypes.c_long])
+
+def cf_string(text):
+    return string_create(None, text.encode(), UTF8)
+
+def cf_int(value):
+    boxed = ctypes.c_int32(value)
+    return number_create(None, 3, ctypes.byref(boxed))
+
+keys = (vp * 2)(cf_string("PrimaryUsagePage"), cf_string("PrimaryUsage"))
+values = (vp * 2)(cf_int(0xff00), cf_int(5))
+key_callbacks = vp.in_dll(cf, "kCFTypeDictionaryKeyCallBacks")
+value_callbacks = vp.in_dll(cf, "kCFTypeDictionaryValueCallBacks")
+matching = dictionary_create(None, keys, values, 2, ctypes.addressof(key_callbacks), ctypes.addressof(value_callbacks))
+
+client = client_create(None)
+client_set_matching(client, matching)
+services = client_copy_services(client)
+product_key = cf_string("Product")
+
+die_temps = []
+for index in range(array_count(services) if services else 0):
+    service = array_get(services, index)
+    product = service_copy_property(service, product_key)
+    name = ctypes.create_string_buffer(128)
+    if not product or not string_get(product, name, 128, UTF8):
+        continue
+    if "tdie" not in name.value.decode():
+        continue
+    event = service_copy_event(service, TEMPERATURE_EVENT, 0, 0)
+    if not event:
+        continue
+    celsius = event_get_float(event, TEMPERATURE_EVENT << 16)
+    if 0 < celsius < 150:
+        die_temps.append(celsius)
+
+if die_temps:
+    print(f"{sum(die_temps) / len(die_temps):.0f}\t{max(die_temps):.0f}")
+PY
+) &
+TEMP_PID=$!
+
 # --- Git: scan a base dir; one numstat pass per repo, count commits + sum lines.
 # Populates globals: g_commits g_add g_del g_rows (safe if $1 doesn't exist —
 # the unmatched glob fails the .git guard and the loop body is skipped).
@@ -115,6 +183,12 @@ IFS=$'\t' read -r gh_opened gh_closed < "$GH_RAW" 2>/dev/null
 rm -f "$GH_RAW"
 gh_opened="${gh_opened:-0}"; gh_closed="${gh_closed:-0}"
 
+wait "$TEMP_PID" 2>/dev/null
+IFS=$'\t' read -r soc_avg soc_max < "$TEMP_RAW" 2>/dev/null
+rm -f "$TEMP_RAW"
+temp_title=""
+[ -n "$soc_avg" ] && temp_title=" · ${soc_avg}°C"
+
 # --- Render a "base<TAB>commits<TAB>add<TAB>del" repo table under a heading ---
 print_section() {
   local title="$1" base="$2" commits="$3" add="$4" del="$5" rows="$6"
@@ -132,7 +206,7 @@ print_section() {
 # ================= SwiftBar output =================
 # Two title lines before the first "---" cycle (rotate ~5s) in the menu bar —
 # narrower than one long line, since the menu bar can't stack rows vertically.
-echo "<> ${total_commits} · 🐛 ↑${gh_opened}/↓${gh_closed} | font=Menlo size=13"
+echo "<> ${total_commits} · 🐛 ↑${gh_opened}/↓${gh_closed}${temp_title} | font=Menlo size=13"
 echo "\$${tot_cost} · ${tot_htok} | font=Menlo size=13"
 echo "---"
 print_section "Work today" "$WORK" "$work_commits" "$work_add" "$work_del" "$work_rows"
@@ -145,6 +219,7 @@ echo "Antigravity today · \$${a_cost} · ${a_htok} tok | font=Menlo"
 [ "$a_models" != "-" ] && echo "models: ${a_models} | font=Menlo size=12 color=gray"
 echo "Issues today · ↑${gh_opened} opened · ↓${gh_closed} closed | font=Menlo"
 echo "author or assignee · github.com/luarss | font=Menlo size=12 color=gray href=https://github.com/luarss"
+[ -n "$soc_avg" ] && echo "SoC temp · avg ${soc_avg}°C · max ${soc_max}°C | font=Menlo"
 echo "---"
 echo "Updated $(date +%H:%M) | size=11 color=gray"
 echo "Refresh | refresh=true"
