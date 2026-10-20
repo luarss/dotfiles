@@ -47,16 +47,6 @@
         ]
       }
     ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/notify-feedback.sh"
-          }
-        ]
-      }
-    ],
     "SessionEnd": [
       {
         "hooks": [

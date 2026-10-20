@@ -78,10 +78,6 @@ The overrides enforce:
 
 - `post-checkout` — Copies `.env` from main worktree to new worktrees (for `git worktree add`)
 
-## Feedback Notifications
-
-`.claude/hooks/notify-feedback.sh` is wired under `Notification` in `settings.base.json` (all profiles). It fires when Claude Code needs you — a permission prompt, or input idle for 60s — and posts a macOS notification (`osascript`, "Glass" sound) titled with the project name. No-ops where `osascript` is missing (Linux) and always exits 0. `CLAUDE_NOTIFY_CMD` overrides the notifier (used by `tests/notify-feedback.bats`).
-
 ## Daily Session Log (launchd, macOS)
 
 `scripts/daily-session-log.sh` is a weekday-9am routine: a launchd agent runs it to log every Claude Code session under `~/work` into the latest weekly note (`~/work/notes/NUS-Enterprise/Weekly/<WEEK>.md`) and push it straight to the base branch (no PR).
