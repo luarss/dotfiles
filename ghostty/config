@@ -29,6 +29,12 @@ quick-terminal-animation-duration = 0.15
 clipboard-paste-protection = true
 clipboard-paste-bracketed-safe = true
 
+desktop-notifications = true
+bell-features = system,attention,title
+notify-on-command-finish = unfocused
+notify-on-command-finish-action = bell,notify
+notify-on-command-finish-after = 10s
+
 shell-integration = detect
 
 scrollback-limit = 25000000
