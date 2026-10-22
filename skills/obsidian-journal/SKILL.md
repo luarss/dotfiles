@@ -111,12 +111,11 @@ For every new entry:
 2. **Ask only missing required fields**, one or two at a time.
 3. **Auto-fill Date** to today unless the user says otherwise.
 4. **Generate slug** from the title: lowercase, spaces → hyphens, strip non-`[a-z0-9-]` characters, max ~60 chars.
-5. **Show a preview** of the full file (frontmatter + body, as it will be written to disk) and ask "Log this?" Wait for confirmation.
-6. **On confirmation:**
+5. **Write immediately** once required fields are filled — no preview or "Log this?" confirmation:
    a. **Write** the new file: `~/work/notes/NUS-Enterprise/Reflections/<Section>/YYYY-MM-DD-<slug>.md`
    b. **Read** the section's `Index.md` to get the current table content.
    c. **Edit** `Index.md` to append a new row (use the existing last row as `old_str`, append the new row to `new_str`). Title cell uses a wiki link: `[[YYYY-MM-DD-<slug>]]`.
-7. **On success**, reply with one line: confirmation + the relative file path (from `~/work/notes/`).
+6. **On success**, reply with one line: confirmation + the relative file path (from `~/work/notes/`).
 
 ## Updating an existing entry
 
