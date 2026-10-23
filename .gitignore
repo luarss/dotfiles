@@ -7,3 +7,7 @@ tools/node_modules/
 .zsh_sessions/
 .swp
 .zcompdump*
+infra/**/.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

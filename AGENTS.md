@@ -113,6 +113,15 @@ Durable backup of the `~/work/notes` Obsidian vault, including the git-ignored l
 - **Install:** `install_notes_archive_agent` in `install.sh` creates the archive dir and generates `~/Library/LaunchAgents/com.<user>.notes-archive.plist` (weekdays 09:10) — **work machine only**. Logs to `~/.claude/logs/notes-archive.log`. **One-time manual step:** register `~/work/archives/notes` in Google Drive for Desktop as a **mirror** folder (real directory, not a symlink; see the mirror rationale above).
 - **Tests:** `tests/notes-archive.bats`.
 
+## Remote Access (Tailscale, work laptop only)
+
+Screen Sharing over a single-user tailnet. Two independent pieces, neither wired into `install.sh`:
+
+- `scripts/remote-access-setup.sh [check|apply]` — macOS host side. `check` (default) is read-only and exits non-zero if any requirement fails: Screen Sharing running, `com.apple.access_screensharing` group containing only the current user, `pmset` AC sleep = 0, application firewall on, screen lock delay immediate (`sysadminctl -screenLock status`), FileVault on, Tailscale connected (prints the `vnc://` URL). `apply` runs the `sudo` steps (enable the launchd service, create the group and add the owner, `pmset -c sleep 0`, firewall on) and then re-runs the checks. FileVault is never changed automatically. It self-gates through `install.sh --is-work-machine` and no-ops off macOS. A closed laptop lid sleeps regardless of `pmset`; the script warns about this.
+- `infra/tailscale/` — Terraform (provider `tailscale/tailscale`, pinned `= 0.29.2`, lock file committed with hashes for darwin arm64/amd64 and linux amd64). `tailscale_acl.owner_only` grants only `var.owner_email` access to `autogroup:self` on `var.allowed_ports` (default `tcp:5900`), replacing the whole policy. `tailscale_tailnet_settings.hardening` turns on device approval and auto-updates, sets key expiry, and blocks joining external tailnets. Applied manually from the work laptop only: credentials are `TAILSCALE_API_KEY` / `TAILSCALE_TAILNET` in `.env`, `terraform.tfvars` and state are gitignored. Because the ACL overwrites existing content, review `terraform plan` before the first apply.
+
+The Tailscale GUI app (`tailscale-app` cask) does not support Tailscale SSH; only Screen Sharing (and plain SSH) over the tailnet IP are in scope.
+
 ## Security
 
 File access boundaries, protected patterns, and command deny lists are centralized in `file-permissions.json` — the **single source of truth** across Claude Code, Antigravity CLI, and Antigravity 2.0 Desktop.
@@ -161,5 +170,7 @@ Pinned: `ccusage` 20.0.24
 **Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor. `trivy` (the work-laptop skill-scan scanner) rides this same channel — no per-invocation fetch, unlike the `uvx`-delivered scanner it replaced.
 
 The Brewfile splits work-only (`trivy`, `mysql@8.4`, `swiftbar`) packages using `install.sh --is-work-machine` as the gate, so `WORK_HOSTNAME` (`install.sh`) stays the single source of truth instead of a second hardcoded hostname in the Brewfile. Note the `DOTFILES_WORK_HOSTNAME` override only reaches `install.sh` directly (and the test suite) — `brew bundle` evaluates the Brewfile in a sanitized environment that strips custom env vars, so the override has no effect through `brew bundle` itself.
+
+**Terraform providers** (`infra/tailscale/versions.tf`) — exact version (`= 0.29.2`), with `.terraform.lock.hcl` committed so `terraform init` verifies provider hashes. To bump: edit the version, run `terraform init -upgrade`, then `terraform providers lock -platform=darwin_arm64 -platform=darwin_amd64 -platform=linux_amd64` and commit.
 
 **Claude plugins** — `installed_plugins.json` is committed to this repo with `installPath` values using `~` as a placeholder. `install.sh` **copies** (not symlinks) it to `~/.claude/plugins/installed_plugins.json`, expanding `~` → `$HOME` at copy time so paths are valid on the current machine. This keeps the repo file as a pinned snapshot: `gitCommitSha` values only change when the user deliberately updates them, and machine-specific absolute paths never leak into version control. It records the `gitCommitSha` for every installed plugin. To check for updates run `scripts/check-plugin-updates.sh` (also runs weekly via `.github/workflows/check-plugin-updates.yml`, which opens a GitHub issue when any plugin is behind). To update a plugin: let Claude Code upgrade it, then run `scripts/normalize-plugins.sh` to copy the updated file back into the repo with paths normalized to `~`, and commit.

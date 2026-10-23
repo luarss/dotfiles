@@ -29,6 +29,32 @@ and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
   activity across `~/work` and `~/projects` + Claude & Antigravity usage); symlinked on the
   work laptop only
 
+- `infra/tailscale/` — Terraform for the work-laptop tailnet: owner-only ACL + device hardening
+- `scripts/remote-access-setup.sh` — read-only `check` / `apply` for Screen Sharing over Tailscale on the work Mac
+
+## Remote Access (Tailscale)
+
+Work laptop only. Reach the Mac from your own devices via Screen Sharing over a
+Tailscale tailnet that only you belong to.
+
+```bash
+brew bundle install --no-upgrade
+scripts/remote-access-setup.sh check
+scripts/remote-access-setup.sh apply
+```
+
+Sign in to the Tailscale app, then apply the ACL from the work laptop:
+
+```bash
+cd infra/tailscale
+cp terraform.tfvars.example terraform.tfvars
+set -a; . ../../.env; set +a
+terraform init && terraform plan
+terraform apply
+```
+
+Connect from another device on the tailnet with `vnc://<machine>.<tailnet>.ts.net`.
+
 ## Claude Profiles
 
 Profiles are driven by `providers.json`. Select one (each sets `CLAUDE_CONFIG_DIR`):

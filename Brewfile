@@ -38,4 +38,5 @@ if is_work_machine
   # Menu-bar productivity widget host (.config/swiftbar/prodwatch.60s.sh).
   # install.sh symlinks the plugin and points SwiftBar at it.
   cask "swiftbar"
+  cask "tailscale-app"
 end
