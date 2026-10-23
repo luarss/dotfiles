@@ -28,6 +28,10 @@ and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
 - `.config/swiftbar/prodwatch.60s.sh` — SwiftBar menu-bar widget (today's git
   activity across `~/work` and `~/projects` + Claude & Antigravity usage); symlinked on the
   work laptop only
+- `office-mac/` — setup scripts for the shared office Macs, run by hand (not
+  wired into `install.sh`): `init.sh` disables AC sleep and starts the Twingate
+  connector (tokens from GCP Secret Manager; needs docker + authenticated
+  gcloud), `caffeinate.sh` keeps the machine and display awake for 7 days
 
 ## Claude Profiles
 
