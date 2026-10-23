@@ -432,3 +432,32 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/calls.log" ]
 }
+
+@test "office_mac_setup_skipped_off_office_mac" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [[ "$output" == *"SKIP  office-mac setup (not an office Mac)"* ]]
+}
+
+@test "office_mac_setup_runs_init_on_office_mac" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "office-mac"; }
+  sudo() { return 0; }
+  pmset() { printf 'AC Power:\n sleep                0\n'; }
+  docker() { echo true; }
+  pgrep() { return 0; }
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  export -f uname hostname sudo pmset docker pgrep launchctl trivy
+  export DOTFILES_WORK_HOSTNAME="office-mac"
+  export DOTFILES_OFFICE_MAC_HOSTNAME="office-mac"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"twingate-connector already running"* ]]
+  [[ "$output" == *"OK    office-mac init.sh"* ]]
+  [[ "$output" == *"SKIP  caffeinate already running"* ]]
+}

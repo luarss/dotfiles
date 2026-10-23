@@ -663,6 +663,23 @@ install_agy_settings() {
 # Merges compiled permissions (userSettings.globalPermissionGrants: deny/allow)
 # from file-permissions.json into ~/.gemini/config/config.json, preserving
 # existing user state (autoExecutionPolicy, themeMode, remoteControlHostname, etc.).
+install_office_mac_setup() {
+  if ! is_office_mac; then
+    echo "SKIP  office-mac setup (not an office Mac)"
+    return
+  fi
+  if bash "$DOTFILES/office-mac/init.sh"; then
+    echo "OK    office-mac init.sh"
+  else
+    echo "WARN  office-mac init.sh failed"
+  fi
+  if pgrep -x caffeinate >/dev/null; then
+    echo "SKIP  caffeinate already running"
+  else
+    bash "$DOTFILES/office-mac/caffeinate.sh"
+  fi
+}
+
 install_antigravity_desktop_settings() {
   local dst="$HOME/.gemini/config/config.json"
   mkdir -p "$(dirname "$dst")"
@@ -694,9 +711,12 @@ IS_DARWIN=0
 # Work-machine detection — single source of truth for every work-vs-personal
 # gate in this script (skill-scan guard, sonnet switch, launchd agents, and
 # Brewfile package selection via `install.sh --is-work-machine`).
-# Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
-WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
-is_work_machine() { [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; }
+# Override via DOTFILES_WORK_HOSTNAME (space-separated list) if your work hostnames differ.
+WORK_HOSTNAMES="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air adminits-MacBook-Air}"
+is_work_machine() { [[ " $WORK_HOSTNAMES " == *" $(hostname -s) "* ]]; }
+
+OFFICE_MAC_HOSTNAMES="${DOTFILES_OFFICE_MAC_HOSTNAME:-adminits-MacBook-Air}"
+is_office_mac() { [[ " $OFFICE_MAC_HOSTNAMES " == *" $(hostname -s) "* ]]; }
 
 if [ "${1:-}" = "--is-work-machine" ]; then
   is_work_machine
@@ -772,6 +792,8 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Antigravity 2.0 (Desktop Electron app / IDE) settings: global permission grants
   install_antigravity_desktop_settings
+
+  install_office_mac_setup
 fi
 
 # Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard

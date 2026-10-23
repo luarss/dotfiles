@@ -20,8 +20,8 @@
 set -u
 
 # Work laptop only — same switch skill-scan-guard.sh and the sonnet switch use.
-WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
-[ "$(hostname -s 2>/dev/null)" = "$WORK_HOSTNAME" ] || exit 0
+WORK_HOSTNAMES="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air adminits-MacBook-Air}"
+[[ " $WORK_HOSTNAMES " == *" $(hostname -s 2>/dev/null) "* ]] || exit 0
 
 # Destination root — a real dir mirrored to Google Drive. Override for tests.
 ARCHIVE_DIR="${CLAUDE_ARCHIVE_DIR:-$HOME/work/archives/claude-sessions}"

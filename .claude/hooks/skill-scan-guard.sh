@@ -7,7 +7,7 @@
 # Exit codes: 0 = allow, 2 = block.
 #
 # Gating — WORK LAPTOP ONLY. If `hostname -s` != $DOTFILES_WORK_HOSTNAME
-# (default Shuis-MacBook-Air) the guard no-ops immediately, so personal
+# (space-separated list, default Shuis-MacBook-Air adminits-MacBook-Air) the guard no-ops immediately, so personal
 # machines never scan. Same hostname switch the sonnet switch in install.sh uses.
 #
 # Scope: fires on plugin/skill INSTALL commands run through Bash:
@@ -44,8 +44,8 @@
 set -uo pipefail
 
 # --- Work-laptop gate -------------------------------------------------------
-WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
-[[ "$(hostname -s 2>/dev/null)" == "$WORK_HOSTNAME" ]] || exit 0
+WORK_HOSTNAMES="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air adminits-MacBook-Air}"
+[[ " $WORK_HOSTNAMES " == *" $(hostname -s 2>/dev/null) "* ]] || exit 0
 
 # --- Parse the tool input ---------------------------------------------------
 INPUT=$(cat)
