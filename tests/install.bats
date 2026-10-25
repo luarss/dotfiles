@@ -432,3 +432,34 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/calls.log" ]
 }
+
+@test "swiftbar_plugin_dir_not_written_when_home_is_not_real_home" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
+  dscl() { echo "NFSHomeDirectory: /Users/someone-else"; }
+  export -f uname hostname launchctl trivy defaults dscl
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SKIP  SwiftBar PluginDirectory (HOME is not the real user home)"* ]]
+  ! grep -q "com.ameba.SwiftBar" "$HOME/calls.log"
+}
+
+@test "swiftbar_plugin_dir_written_when_home_is_real_home" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
+  dscl() { echo "NFSHomeDirectory: $HOME"; }
+  export -f uname hostname launchctl trivy defaults dscl
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qx "defaults write com.ameba.SwiftBar PluginDirectory $HOME/.config/swiftbar" "$HOME/calls.log"
+}

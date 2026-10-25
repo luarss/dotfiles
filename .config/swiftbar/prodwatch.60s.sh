@@ -12,9 +12,41 @@ WORK_AUTHOR="song.luar@a5x.ai"
 # ~/projects repos commit under the personal GitHub noreply identity too.
 PROJ_AUTHOR="song.luar@a5x.ai\|luarss@users.noreply.github.com"
 
+CACHE_DIR="${PRODWATCH_CACHE_DIR:-$HOME/.cache/prodwatch}"
+CCUSAGE_TTL="${PRODWATCH_CCUSAGE_TTL:-600}"
+USAGE_CACHE="$CACHE_DIR/ccusage-$(date +%Y%m%d).json"
+
+cache_age_seconds() {
+  local modified
+  modified="$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null)" || return 1
+  echo $(( $(date +%s) - modified ))
+}
+
+usage_cache_is_fresh() {
+  local age
+  [ -s "$USAGE_CACHE" ] || return 1
+  age="$(cache_age_seconds "$USAGE_CACHE")" || return 1
+  [ "$age" -lt "$CCUSAGE_TTL" ]
+}
+
+refresh_usage_cache() {
+  local fresh
+  mkdir -p "$CACHE_DIR"
+  fresh="$(mktemp "$CACHE_DIR/ccusage.XXXXXX")"
+  if ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$fresh" 2>/dev/null && [ -s "$fresh" ]; then
+    mv -f "$fresh" "$USAGE_CACHE"
+    find "$CACHE_DIR" -name 'ccusage-*.json' ! -name "$(basename "$USAGE_CACHE")" -delete 2>/dev/null
+  else
+    rm -f "$fresh"
+  fi
+}
+
 # Kick off ccusage (the slow half) in the background so it overlaps the git scan.
 USAGE_RAW="$(mktemp)"
-( ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$USAGE_RAW" 2>/dev/null ) &
+(
+  usage_cache_is_fresh || refresh_usage_cache
+  cat "$USAGE_CACHE" >"$USAGE_RAW" 2>/dev/null
+) &
 USAGE_PID=$!
 
 # Kick off GitHub issue counts (network-bound) in the background too. Counts

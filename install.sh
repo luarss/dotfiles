@@ -698,6 +698,10 @@ IS_DARWIN=0
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 is_work_machine() { [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; }
 
+real_user_home() {
+  dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
+}
+
 if [ "${1:-}" = "--is-work-machine" ]; then
   is_work_machine
   exit $?
@@ -800,8 +804,12 @@ if [ "$IS_DARWIN" = 1 ] && is_work_machine; then
   mkdir -p "$HOME/.config/swiftbar"
   symlink .config/swiftbar/prodwatch.60s.sh
   # SwiftBar's bundle id is com.ameba.SwiftBar; store the plugin dir it watches.
-  defaults write com.ameba.SwiftBar PluginDirectory "$HOME/.config/swiftbar"
-  echo "SET   SwiftBar PluginDirectory -> $HOME/.config/swiftbar"
+  if [ "$HOME" = "$(real_user_home)" ]; then
+    defaults write com.ameba.SwiftBar PluginDirectory "$HOME/.config/swiftbar"
+    echo "SET   SwiftBar PluginDirectory -> $HOME/.config/swiftbar"
+  else
+    echo "SKIP  SwiftBar PluginDirectory (HOME is not the real user home)"
+  fi
 else
   echo "SKIP  SwiftBar widget (non-work machine or non-macOS)"
 fi

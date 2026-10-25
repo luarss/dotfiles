@@ -366,3 +366,64 @@ EOF
   [[ ! "$output" =~ "Disk ·" ]]
   [[ ! "$output" =~ "💾" ]]
 }
+
+stub_counting_ccusage() {
+  local stub_dir="$1" cost="$2"
+  cat > "$stub_dir/ccusage" <<EOF2
+#!/bin/bash
+echo call >> "$TEST_DIR/ccusage.calls"
+echo '{"daily":[{"agent":"all","totalCost":$cost,"totalTokens":0,"agents":[]}]}'
+EOF2
+  chmod +x "$stub_dir/ccusage"
+}
+
+@test "prodwatch reuses a fresh ccusage cache instead of re-running ccusage" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_counting_ccusage "$stub_dir" 1.25
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
+
+  stub_counting_ccusage "$stub_dir" 9.99
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
+  [ "$(wc -l < "$TEST_DIR/ccusage.calls")" -eq 1 ]
+}
+
+@test "prodwatch re-runs ccusage once the cache is older than the TTL" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_counting_ccusage "$stub_dir" 1.25
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+
+  stub_counting_ccusage "$stub_dir" 9.99
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" PRODWATCH_CCUSAGE_TTL=0 bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$9.99 · 0 | font=Menlo size=13" ]]
+  [ "$(wc -l < "$TEST_DIR/ccusage.calls")" -eq 2 ]
+}
+
+@test "prodwatch keeps the last good cache when ccusage fails" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_counting_ccusage "$stub_dir" 1.25
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+
+  printf '#!/bin/bash\nexit 1\n' > "$stub_dir/ccusage"
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" PRODWATCH_CCUSAGE_TTL=0 bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
+}
