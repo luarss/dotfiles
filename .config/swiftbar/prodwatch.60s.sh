@@ -18,7 +18,7 @@ USAGE_CACHE="$CACHE_DIR/ccusage-$(date +%Y%m%d).json"
 
 cache_age_seconds() {
   local modified
-  modified="$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null)" || return 1
+  modified="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)" || return 1
   echo $(( $(date +%s) - modified ))
 }
 
