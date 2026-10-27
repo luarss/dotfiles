@@ -36,6 +36,7 @@ notify-on-command-finish-action = bell,notify
 notify-on-command-finish-after = 10s
 
 shell-integration = detect
+shell-integration-features = ssh-terminfo,ssh-env
 
 scrollback-limit = 25000000
 
