@@ -553,7 +553,43 @@ EOF
 
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  grok identity guard (non-office machine)"* ]]
+  [[ "$output" == *"SKIP  grok identity guard (non-office machine without Grok)"* ]]
+  [ ! -e "$HOME/.grok/hooks/identity-guard.sh" ]
+}
+
+@test "grok_guard_installed_on_personal_mac_with_grok" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+  mkdir -p "$HOME/.grok"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
+  [ -f "$HOME/.grok/hooks/identity-guard.json" ]
+}
+
+@test "grok_guard_installed_on_work_mac_with_grok" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  export -f uname hostname launchctl trivy
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+  mkdir -p "$HOME/.grok"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
+}
+
+@test "grok_guard_not_installed_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
+  mkdir -p "$HOME/.grok"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
   [ ! -e "$HOME/.grok/hooks/identity-guard.sh" ]
 }
 

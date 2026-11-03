@@ -28,11 +28,11 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 |---|---|---|
 | **work** | `hostname -s` == `$DOTFILES_WORK_HOSTNAME` (default `Shuis-MacBook-Air`) | Everything: skill-scan guard + trivy, session/notes launchd agents, SwiftBar, `mysql@8.4`, manifest model |
 | **office** | macOS, not the work host, and `id -un` is in `$DOTFILES_OFFICE_USERS` (space-separated; default `aisystems adminit`, the shared office-Mac accounts) | Manifest model (no sonnet switch), SwiftBar (tracking `NUSXGrok` via a generated `~/.config/prodwatch/identity`, which sets `PRODWATCH_WORK_AUTHOR`/`PRODWATCH_PROJ_AUTHOR`/`PRODWATCH_GITHUB_USER`; other classes keep the `luarss` defaults), `mysql@8.4`, Grok identity guard. **No** session/notes agents or skill-scan (they assume a personal vault/Drive mirror) |
-| **personal** | anything else | sonnet + `effortLevel: high` switch; none of the above |
+| **personal** | anything else | sonnet + `effortLevel: high` switch; none of the above (but see the Grok guard below) |
 
-### Grok Identity Guard (office only)
+### Grok Identity Guard (office Macs + every Mac with Grok)
 
-Every office Mac runs on the same Mac/Grok account, so a remote Grok session can drive any of them. Grok hook events carry no account, sender, or origin field, so the guard checks that a person is present at the receiving Mac instead. `grok/hooks/identity-guard.{sh,json}` are **copied** (not symlinked, so editing the repo doesn't change the live guard until reinstall) into `~/.grok/hooks/` as a personal `PreToolUse` hook on every tool. It denies unless:
+The office Macs and some non-office machines all sign in to the shared `NUSXGrok` Grok account, so a Grok session on any of them can drive the others, and a separate office-only account isn't available. Grok hook events carry no account, sender, or origin field, so the guard can't tell who sent a request; it checks that a person is present at the receiving Mac instead. It is installed on every office Mac and on any other Mac where Grok is present (`~/.grok` exists or `grok` is on `PATH`), whatever its class; Linux is skipped. `grok/hooks/identity-guard.{sh,json}` are **copied** (not symlinked, so editing the repo doesn't change the live guard until reinstall) into `~/.grok/hooks/` as a personal `PreToolUse` hook on every tool. It denies unless:
 
 - the workspace root is under `~/work` (`GROK_GUARD_ALLOWED_ROOT`);
 - the tool input does not mention `.grok` (the bot can't edit its hooks or arm itself);

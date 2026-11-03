@@ -535,9 +535,13 @@ install_prodwatch_identity() {
   echo "GEN   $identity_file (tracking $OFFICE_GITHUB_USER)"
 }
 
+grok_is_installed() {
+  [ -d "$HOME/.grok" ] || command -v grok >/dev/null 2>&1
+}
+
 install_grok_guard() {
-  if ! is_office_machine; then
-    echo "SKIP  grok identity guard (non-office machine)"
+  if ! is_office_machine && ! grok_is_installed; then
+    echo "SKIP  grok identity guard (non-office machine without Grok)"
     return 0
   fi
   local hooks_dst="$HOME/.grok/hooks"
