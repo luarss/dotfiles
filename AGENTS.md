@@ -32,12 +32,10 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 
 ### Grok Identity Guard (office Macs + every Mac with Grok)
 
-The office Macs and some non-office machines all sign in to the shared `NUSXGrok` Grok account, so a Grok session on any of them can drive the others, and a separate office-only account isn't available. Grok hook events carry no account, sender, or origin field, so the guard can't tell who sent a request; it checks that a person is present at the receiving Mac instead. It is installed on every office Mac and on any other Mac where Grok is present (`~/.grok` exists or `grok` is on `PATH`), whatever its class; Linux is skipped. `grok/hooks/identity-guard.{sh,json}` are **copied** (not symlinked, so editing the repo doesn't change the live guard until reinstall) into `~/.grok/hooks/` as a personal `PreToolUse` hook on every tool. It denies unless:
+The office Macs and some non-office machines all sign in to the shared `NUSXGrok` Grok account, so a Grok session on any of them can drive the others, and a separate office-only account isn't available. Grok hook events carry no account, sender, or origin field, so the guard can't tell who sent a request; it restricts by the **receiving** Mac's username instead. It is installed on every office Mac and on any other Mac where Grok is present (`~/.grok` exists or `grok` is on `PATH`), whatever its class; Linux is skipped. `grok/hooks/identity-guard.{sh,json}` are **copied** (not symlinked, so editing the repo doesn't change the live guard until reinstall) into `~/.grok/hooks/` as a personal `PreToolUse` hook on every tool, and `install.sh` prefixes the hook command with `GROK_GUARD_OFFICE_USERS='<$OFFICE_USERS>'` so the office-account list keeps one source of truth. On every Mac, tool input that mentions `.grok` is denied (the bot can't edit its hooks or arm itself). Then:
 
-- the workspace root is under `~/work` (`GROK_GUARD_ALLOWED_ROOT`);
-- the tool input does not mention `.grok` (the bot can't edit its hooks or arm itself);
-- the screen is not locked (`ioreg` `CGSSessionScreenIsLocked`);
-- `~/.grok/armed` exists and was touched within the last hour (`GROK_GUARD_ARMED_TTL_SECONDS`). A person at the Mac arms it with `touch ~/.grok/armed`.
+- **Office username** (`id -un` in the list): runs unattended, so office bots can drive each other, but only in workspaces under `~/work` (`GROK_GUARD_ALLOWED_ROOT`).
+- **Any other username**: denied unless the screen is unlocked (`ioreg` `CGSSessionScreenIsLocked`) and `~/.grok/armed` was touched within the last hour (`GROK_GUARD_ARMED_TTL_SECONDS`). A person at the Mac arms it with `touch ~/.grok/armed`, so office bots can't act there unattended.
 
 Grok hooks **fail open** on timeout/crash/malformed output, so the script turns every error into an explicit deny (`ERR` trap) and keeps to fast commands. It lives in `grok/` rather than `.grok/` so Grok doesn't also load it as a project hook when this repo is open. Tests: `tests/grok-identity-guard.bats`.
 

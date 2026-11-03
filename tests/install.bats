@@ -541,7 +541,7 @@ EOF
   grep -qx "PRODWATCH_WORK_AUTHOR=NUSXGrok" "$HOME/.config/prodwatch/identity"
   [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
   [ ! -L "$HOME/.grok/hooks/identity-guard.sh" ]
-  jq -e '.hooks.PreToolUse[0].hooks[0].command == "bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
+  jq -e --arg users "$(id -un)" '.hooks.PreToolUse[0].hooks[0].command == "GROK_GUARD_OFFICE_USERS='"'"'\($users)'"'"' bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
   [[ "$output" == *"SKIP  daily-session-log agent (non-work machine)"* ]]
   [[ "$output" == *"SKIP  trivy DB pre-warm (non-work machine)"* ]]
 }
@@ -566,7 +566,7 @@ EOF
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
-  [ -f "$HOME/.grok/hooks/identity-guard.json" ]
+  jq -e '.hooks.PreToolUse[0].hooks[0].command == "GROK_GUARD_OFFICE_USERS='"'"'no-such-office-user'"'"' bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
 }
 
 @test "grok_guard_installed_on_work_mac_with_grok" {

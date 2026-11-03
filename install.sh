@@ -547,7 +547,9 @@ install_grok_guard() {
   local hooks_dst="$HOME/.grok/hooks"
   mkdir -p "$hooks_dst"
   install -m 0755 "$DOTFILES/grok/hooks/identity-guard.sh" "$hooks_dst/identity-guard.sh"
-  install -m 0644 "$DOTFILES/grok/hooks/identity-guard.json" "$hooks_dst/identity-guard.json"
+  jq --arg users "$OFFICE_USERS" \
+    '.hooks.PreToolUse[0].hooks[0].command = "GROK_GUARD_OFFICE_USERS='"'"'\($users)'"'"' " + .hooks.PreToolUse[0].hooks[0].command' \
+    "$DOTFILES/grok/hooks/identity-guard.json" > "$hooks_dst/identity-guard.json"
   echo "COPY  $hooks_dst/identity-guard.sh, identity-guard.json"
 }
 
