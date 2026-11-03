@@ -27,7 +27,7 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 | Class | Detected by | Gets |
 |---|---|---|
 | **work** | `hostname -s` == `$DOTFILES_WORK_HOSTNAME` (default `Shuis-MacBook-Air`) | Everything: skill-scan guard + trivy, session/notes launchd agents, SwiftBar, `mysql@8.4`, manifest model |
-| **office** | macOS, not the work host, and `id -un` is in `$DOTFILES_OFFICE_USERS` (space-separated; default `aisystems adminit`, the shared office-Mac accounts) | Manifest model (no sonnet switch), SwiftBar, `mysql@8.4`, Grok identity guard. **No** session/notes agents or skill-scan (they assume a personal vault/Drive mirror) |
+| **office** | macOS, not the work host, and `id -un` is in `$DOTFILES_OFFICE_USERS` (space-separated; default `aisystems adminit`, the shared office-Mac accounts) | Manifest model (no sonnet switch), SwiftBar (tracking `NUSXGrok` via a generated `~/.config/prodwatch/identity`, which sets `PRODWATCH_WORK_AUTHOR`/`PRODWATCH_PROJ_AUTHOR`/`PRODWATCH_GITHUB_USER`; other classes keep the `luarss` defaults), `mysql@8.4`, Grok identity guard. **No** session/notes agents or skill-scan (they assume a personal vault/Drive mirror) |
 | **personal** | anything else | sonnet + `effortLevel: high` switch; none of the above |
 
 ### Grok Identity Guard (office only)

@@ -521,6 +521,20 @@ PLIST
   fi
 }
 
+install_prodwatch_identity() {
+  local identity_file="$HOME/.config/prodwatch/identity"
+  if ! is_office_machine; then
+    rm -f "$identity_file"
+    return 0
+  fi
+  mkdir -p "$(dirname "$identity_file")"
+  printf '%s\n' \
+    "PRODWATCH_WORK_AUTHOR=$OFFICE_GITHUB_USER" \
+    "PRODWATCH_PROJ_AUTHOR=$OFFICE_GITHUB_USER" \
+    "PRODWATCH_GITHUB_USER=$OFFICE_GITHUB_USER" > "$identity_file"
+  echo "GEN   $identity_file (tracking $OFFICE_GITHUB_USER)"
+}
+
 install_grok_guard() {
   if ! is_office_machine; then
     echo "SKIP  grok identity guard (non-office machine)"
@@ -710,6 +724,7 @@ IS_DARWIN=0
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 is_work_machine() { [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; }
 OFFICE_USERS="${DOTFILES_OFFICE_USERS:-aisystems adminit}"
+OFFICE_GITHUB_USER="NUSXGrok"
 is_office_machine() {
   [ "$IS_DARWIN" = 1 ] && ! is_work_machine && [[ " $OFFICE_USERS " == *" $(id -un) "* ]]
 }
@@ -826,6 +841,7 @@ fi
 if [ "$IS_DARWIN" = 1 ] && { is_work_machine || is_office_machine; }; then
   mkdir -p "$HOME/.config/swiftbar"
   symlink .config/swiftbar/prodwatch.60s.sh
+  install_prodwatch_identity
   # SwiftBar's bundle id is com.ameba.SwiftBar; store the plugin dir it watches.
   if [ "$HOME" = "$(real_user_home)" ]; then
     defaults write com.ameba.SwiftBar PluginDirectory "$HOME/.config/swiftbar"

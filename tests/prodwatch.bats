@@ -486,3 +486,25 @@ EOF2
   [ "$status" -eq 0 ]
   [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
 }
+
+@test "prodwatch tracks the identity from the identity file" {
+  local stub_dir="$TEST_DIR/bin" repo="$TEST_DIR/home/work/office-repo"
+  mkdir -p "$stub_dir" "$repo" "$TEST_DIR/home/projects" "$TEST_DIR/home/.config/prodwatch"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  printf '%s\n' "PRODWATCH_WORK_AUTHOR=NUSXGrok" "PRODWATCH_PROJ_AUTHOR=NUSXGrok" "PRODWATCH_GITHUB_USER=NUSXGrok" \
+    > "$TEST_DIR/home/.config/prodwatch/identity"
+  git -C "$repo" init -q
+  echo hi > "$repo/file"
+  git -C "$repo" add file
+  git -C "$repo" -c user.name=NUSXGrok -c user.email=bot@example.com commit -qm one
+  echo hi > "$repo/other"
+  git -C "$repo" add other
+  git -C "$repo" -c user.name=luarss -c user.email=song.luar@a5x.ai commit -qm two
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "github.com/NUSXGrok" ]]
+  [[ "$output" =~ "office-repo" ]]
+  [[ "$output" =~ "<> 1 ·" ]]
+}

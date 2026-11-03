@@ -537,6 +537,8 @@ EOF
   [[ "$output" == *"SKIP  sonnet switch (work/office machine"* ]]
   [ "$(jq -r '.model' "$HOME/.claude/settings.json")" != "sonnet" ]
   [ -L "$HOME/.config/swiftbar/prodwatch.60s.sh" ]
+  grep -qx "PRODWATCH_GITHUB_USER=NUSXGrok" "$HOME/.config/prodwatch/identity"
+  grep -qx "PRODWATCH_WORK_AUTHOR=NUSXGrok" "$HOME/.config/prodwatch/identity"
   [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
   [ ! -L "$HOME/.grok/hooks/identity-guard.sh" ]
   jq -e '.hooks.PreToolUse[0].hooks[0].command == "bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
@@ -553,4 +555,19 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"SKIP  grok identity guard (non-office machine)"* ]]
   [ ! -e "$HOME/.grok/hooks/identity-guard.sh" ]
+}
+
+@test "work_machine_has_no_prodwatch_identity_override" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  launchctl() { return 0; }
+  trivy() { return 0; }
+  export -f uname hostname launchctl trivy
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+  mkdir -p "$HOME/.config/prodwatch"
+  echo "PRODWATCH_GITHUB_USER=stale" > "$HOME/.config/prodwatch/identity"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/.config/prodwatch/identity" ]
 }
