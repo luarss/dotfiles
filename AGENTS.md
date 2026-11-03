@@ -20,6 +20,27 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
 - `office-mac/` — Standalone setup scripts for the shared office Macs, run manually (not called by `install.sh`). `init.sh` sets `pmset -c sleep 0` and starts the `twingate-connector` docker container for the `nusx` network, pulling its access/refresh tokens from GCP Secret Manager (`nusx-enterprise` project) at run time — no tokens live in the repo. `caffeinate.sh` replaces any running `caffeinate` with a 7-day `caffeinate -dims`, so the Mac and its display stay awake while locked
 
+## Machine Classes
+
+`install.sh` sorts every Mac into one of three classes. The detection functions in `install.sh` are the only definition, and the Brewfile asks them through `install.sh --is-work-machine` / `--is-office-machine`:
+
+| Class | Detected by | Gets |
+|---|---|---|
+| **work** | `hostname -s` == `$DOTFILES_WORK_HOSTNAME` (default `Shuis-MacBook-Air`) | Everything: skill-scan guard + trivy, session/notes launchd agents, SwiftBar, `mysql@8.4`, manifest model |
+| **office** | macOS, not the work host, and `id -un` is in `$DOTFILES_OFFICE_USERS` (space-separated; default `aisystems adminit`, the shared office-Mac accounts) | Manifest model (no sonnet switch), SwiftBar, `mysql@8.4`, Grok identity guard. **No** session/notes agents or skill-scan (they assume a personal vault/Drive mirror) |
+| **personal** | anything else | sonnet + `effortLevel: high` switch; none of the above |
+
+### Grok Identity Guard (office only)
+
+Every office Mac runs on the same Mac/Grok account, so a remote Grok session can drive any of them. Grok hook events carry no account, sender, or origin field, so the guard checks that a person is present at the receiving Mac instead. `grok/hooks/identity-guard.{sh,json}` are **copied** (not symlinked, so editing the repo doesn't change the live guard until reinstall) into `~/.grok/hooks/` as a personal `PreToolUse` hook on every tool. It denies unless:
+
+- the workspace root is under `~/work` (`GROK_GUARD_ALLOWED_ROOT`);
+- the tool input does not mention `.grok` (the bot can't edit its hooks or arm itself);
+- the screen is not locked (`ioreg` `CGSSessionScreenIsLocked`);
+- `~/.grok/armed` exists and was touched within the last hour (`GROK_GUARD_ARMED_TTL_SECONDS`). A person at the Mac arms it with `touch ~/.grok/armed`.
+
+Grok hooks **fail open** on timeout/crash/malformed output, so the script turns every error into an explicit deny (`ERR` trap) and keeps to fast commands. It lives in `grok/` rather than `.grok/` so Grok doesn't also load it as a project hook when this repo is open. Tests: `tests/grok-identity-guard.bats`.
+
 ## N-Claude Profile System
 
 Everything is driven by `providers.json`. On install, `install.sh`:
@@ -161,6 +182,6 @@ Pinned: `ccusage` 20.0.24
 
 **Homebrew** — no true version lock exists; `brew bundle` doesn't generate one. Use `brew bundle install --no-upgrade` to prevent silent upgrades on fresh installs. Audit third-party taps (`hashicorp/tap`) before adding — prefer taps owned by the upstream vendor. `trivy` (the work-laptop skill-scan scanner) rides this same channel — no per-invocation fetch, unlike the `uvx`-delivered scanner it replaced.
 
-The Brewfile splits work-only (`trivy`, `mysql@8.4`, `swiftbar`) packages using `install.sh --is-work-machine` as the gate, so `WORK_HOSTNAME` (`install.sh`) stays the single source of truth instead of a second hardcoded hostname in the Brewfile. Note the `DOTFILES_WORK_HOSTNAME` override only reaches `install.sh` directly (and the test suite) — `brew bundle` evaluates the Brewfile in a sanitized environment that strips custom env vars, so the override has no effect through `brew bundle` itself.
+The Brewfile gates `trivy` on `install.sh --is-work-machine`, and `mysql@8.4` and `swiftbar` on work **or** `--is-office-machine`, so `install.sh` stays the single source of truth instead of a second hardcoded hostname/account in the Brewfile. Note the `DOTFILES_WORK_HOSTNAME` override only reaches `install.sh` directly (and the test suite) — `brew bundle` evaluates the Brewfile in a sanitized environment that strips custom env vars, so the override has no effect through `brew bundle` itself.
 
 **Claude plugins** — `installed_plugins.json` is committed to this repo with `installPath` values using `~` as a placeholder. `install.sh` **copies** (not symlinks) it to `~/.claude/plugins/installed_plugins.json`, expanding `~` → `$HOME` at copy time so paths are valid on the current machine. This keeps the repo file as a pinned snapshot: `gitCommitSha` values only change when the user deliberately updates them, and machine-specific absolute paths never leak into version control. It records the `gitCommitSha` for every installed plugin. To check for updates run `scripts/check-plugin-updates.sh` (also runs weekly via `.github/workflows/check-plugin-updates.yml`, which opens a GitHub issue when any plugin is behind). To update a plugin: let Claude Code upgrade it, then run `scripts/normalize-plugins.sh` to copy the updated file back into the repo with paths normalized to `~`, and commit.

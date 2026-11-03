@@ -26,6 +26,7 @@ setup() {
   # Skip zsh plugins clone (network-dependent, per-test $HOME)
   export DOTFILES_SKIP_ZSH_PLUGINS=1
   export DOTFILES_SKIP_FINDER_DEFAULTS=1
+  export DOTFILES_OFFICE_USERS="no-such-office-user"
 
   # Store original environment
   ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
@@ -462,4 +463,94 @@ EOF
   run bash "$INSTALL_SCRIPT"
   [ "$status" -eq 0 ]
   grep -qx "defaults write com.ameba.SwiftBar PluginDirectory $HOME/.config/swiftbar" "$HOME/calls.log"
+}
+
+@test "is_office_machine_flag_exits_0_for_shared_account_on_mac" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "office-mac-mini"; }
+  export -f uname hostname
+  export DOTFILES_OFFICE_USERS="$(id -un)"
+
+  run bash "$INSTALL_SCRIPT" --is-office-machine
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "is_office_machine_flag_matches_any_listed_account" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "office-macbook"; }
+  export -f uname hostname
+  export DOTFILES_OFFICE_USERS="other-office-account $(id -un)"
+
+  run bash "$INSTALL_SCRIPT" --is-office-machine
+  [ "$status" -eq 0 ]
+}
+
+@test "is_office_machine_flag_rejects_account_name_prefix" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "office-macbook"; }
+  export -f uname hostname
+  export DOTFILES_OFFICE_USERS="$(id -un)x"
+
+  run bash "$INSTALL_SCRIPT" --is-office-machine
+  [ "$status" -eq 1 ]
+}
+
+@test "is_office_machine_flag_exits_1_for_other_accounts" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "office-mac-mini"; }
+  export -f uname hostname
+
+  run bash "$INSTALL_SCRIPT" --is-office-machine
+  [ "$status" -eq 1 ]
+}
+
+@test "is_office_machine_flag_exits_1_on_linux" {
+  uname() { echo "Linux"; }
+  export -f uname
+  export DOTFILES_OFFICE_USERS="$(id -un)"
+
+  run bash "$INSTALL_SCRIPT" --is-office-machine
+  [ "$status" -eq 1 ]
+}
+
+@test "work_machine_is_never_an_office_machine" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "custom-corp-laptop"; }
+  export -f uname hostname
+  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+  export DOTFILES_OFFICE_USERS="$(id -un)"
+
+  run bash "$INSTALL_SCRIPT" --is-office-machine
+  [ "$status" -eq 1 ]
+}
+
+@test "office_machine_keeps_manifest_model_and_gets_swiftbar_and_grok_guard" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "office-mac-mini"; }
+  launchctl() { return 0; }
+  export -f uname hostname launchctl
+  export DOTFILES_OFFICE_USERS="$(id -un)"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SKIP  sonnet switch (work/office machine"* ]]
+  [ "$(jq -r '.model' "$HOME/.claude/settings.json")" != "sonnet" ]
+  [ -L "$HOME/.config/swiftbar/prodwatch.60s.sh" ]
+  [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
+  [ ! -L "$HOME/.grok/hooks/identity-guard.sh" ]
+  jq -e '.hooks.PreToolUse[0].hooks[0].command == "bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
+  [[ "$output" == *"SKIP  daily-session-log agent (non-work machine)"* ]]
+  [[ "$output" == *"SKIP  trivy DB pre-warm (non-work machine)"* ]]
+}
+
+@test "grok_guard_skipped_on_personal_mac" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SKIP  grok identity guard (non-office machine)"* ]]
+  [ ! -e "$HOME/.grok/hooks/identity-guard.sh" ]
 }

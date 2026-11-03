@@ -4,6 +4,8 @@
 # what counts as the work machine) instead of duplicating the hostname check.
 is_work_machine = system(File.expand_path("install.sh", __dir__), "--is-work-machine",
                           out: File::NULL, err: File::NULL)
+is_office_machine = system(File.expand_path("install.sh", __dir__), "--is-office-machine",
+                            out: File::NULL, err: File::NULL)
 
 # Taps
 tap "hashicorp/tap"
@@ -22,6 +24,9 @@ if is_work_machine
   # Supply-chain scanner for the work-laptop skill-scan guard
   # (.claude/hooks/skill-scan-guard.sh). Offline binary, no token.
   brew "trivy"
+end
+
+if is_work_machine || is_office_machine
   # 8.4 LTS, not latest: 9.x clients drop mysql_native_password, which
   # sophia-prod still uses for password auth. Keg-only, so force-link.
   brew "mysql@8.4", link: true
@@ -34,7 +39,7 @@ cask "gcloud-cli"
 cask "ghostty"
 cask "font-jetbrains-mono-nerd-font"
 
-if is_work_machine
+if is_work_machine || is_office_machine
   # Menu-bar productivity widget host (.config/swiftbar/prodwatch.60s.sh).
   # install.sh symlinks the plugin and points SwiftBar at it.
   cask "swiftbar"

@@ -521,6 +521,18 @@ PLIST
   fi
 }
 
+install_grok_guard() {
+  if ! is_office_machine; then
+    echo "SKIP  grok identity guard (non-office machine)"
+    return 0
+  fi
+  local hooks_dst="$HOME/.grok/hooks"
+  mkdir -p "$hooks_dst"
+  install -m 0755 "$DOTFILES/grok/hooks/identity-guard.sh" "$hooks_dst/identity-guard.sh"
+  install -m 0644 "$DOTFILES/grok/hooks/identity-guard.json" "$hooks_dst/identity-guard.json"
+  echo "COPY  $hooks_dst/identity-guard.sh, identity-guard.json"
+}
+
 install_hooks() {
   local hooks_src="$DOTFILES/.claude/hooks"
   local hooks_dst="$HOME/.claude/hooks"
@@ -697,6 +709,10 @@ IS_DARWIN=0
 # Override via DOTFILES_WORK_HOSTNAME if your work hostname differs from the default.
 WORK_HOSTNAME="${DOTFILES_WORK_HOSTNAME:-Shuis-MacBook-Air}"
 is_work_machine() { [ "$(hostname -s)" = "$WORK_HOSTNAME" ]; }
+OFFICE_USERS="${DOTFILES_OFFICE_USERS:-aisystems adminit}"
+is_office_machine() {
+  [ "$IS_DARWIN" = 1 ] && ! is_work_machine && [[ " $OFFICE_USERS " == *" $(id -un) "* ]]
+}
 
 real_user_home() {
   dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
@@ -704,6 +720,11 @@ real_user_home() {
 
 if [ "${1:-}" = "--is-work-machine" ]; then
   is_work_machine
+  exit $?
+fi
+
+if [ "${1:-}" = "--is-office-machine" ]; then
+  is_office_machine
   exit $?
 fi
 
@@ -776,6 +797,8 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Antigravity 2.0 (Desktop Electron app / IDE) settings: global permission grants
   install_antigravity_desktop_settings
+
+  install_grok_guard
 fi
 
 # Pre-warm Trivy's vulnerability DB for the work-laptop skill-scan guard
@@ -800,7 +823,7 @@ fi
 # Work machine only — the plugin scans ~/work repos and ccusage, which only make
 # sense here. macOS only (SwiftBar is a mac cask). Symlinks the plugin into
 # ~/.config/swiftbar and points SwiftBar's plugin dir at it.
-if [ "$IS_DARWIN" = 1 ] && is_work_machine; then
+if [ "$IS_DARWIN" = 1 ] && { is_work_machine || is_office_machine; }; then
   mkdir -p "$HOME/.config/swiftbar"
   symlink .config/swiftbar/prodwatch.60s.sh
   # SwiftBar's bundle id is com.ameba.SwiftBar; store the plugin dir it watches.
@@ -811,18 +834,18 @@ if [ "$IS_DARWIN" = 1 ] && is_work_machine; then
     echo "SKIP  SwiftBar PluginDirectory (HOME is not the real user home)"
   fi
 else
-  echo "SKIP  SwiftBar widget (non-work machine or non-macOS)"
+  echo "SKIP  SwiftBar widget (personal machine or non-macOS)"
 fi
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
-if ! is_work_machine; then
+if ! is_work_machine && ! is_office_machine; then
   jq '.model = "sonnet" | .effortLevel = "high"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
     && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
   echo "SET   $HOME/.claude/settings.json model -> sonnet, effortLevel -> high (personal)"
 else
   manifest_model=$(jq -r '.model' "$HOME/.claude/settings.json")
   manifest_effort=$(jq -r '.effortLevel' "$HOME/.claude/settings.json")
-  echo "SKIP  sonnet switch (work machine — keeping $manifest_model, effortLevel $manifest_effort)"
+  echo "SKIP  sonnet switch (work/office machine — keeping $manifest_model, effortLevel $manifest_effort)"
 fi
 
 echo "Done."
