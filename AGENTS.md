@@ -19,6 +19,7 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `.claude/`, `.claude-second-profile/`, `.claude-third-profile/` — Per-profile dirs (`AGENTS.md`, hooks, etc.). Their `settings.json` is **generated**, not committed. Instruction files are `AGENTS.md` (no `CLAUDE.md` — `settings.base.json` sets `instructionFiles: "claude-md-or-agents-md"`, so Claude Code loads `AGENTS.md` directly).
 - `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
 - `office-mac/` — Standalone setup scripts for the shared office Macs, run manually (not called by `install.sh`). `init.sh` sets `pmset -c sleep 0` and starts the `twingate-connector` docker container for the `nusx` network, pulling its access/refresh tokens from GCP Secret Manager (`nusx-enterprise` project) at run time — no tokens live in the repo. `caffeinate.sh` replaces any running `caffeinate` with a 7-day `caffeinate -dims`, so the Mac and its display stay awake while locked
+- `grok/inference-hook/SPEC.md` — Handoff spec (not yet implemented) for a Cloud Run verdict server backing Grok Bot server-side inference hooks: signed-webhook contract, deployment in `nusx-enterprise`, regex policy generated from `file-permissions.json`, Shadow → Allow rollout
 
 ## Machine Classes
 
