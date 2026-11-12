@@ -511,6 +511,25 @@ EOF2
   [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
 }
 
+@test "prodwatch keeps the last good cache when ccusage prices models at zero" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_counting_ccusage "$stub_dir" 1.25
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+
+  cat > "$stub_dir/ccusage" <<'EOF'
+#!/bin/bash
+echo '{"daily":[{"agent":"all","totalCost":0.5,"totalTokens":1000,"agents":[{"agent":"claude","totalCost":0,"totalTokens":1000,"modelBreakdowns":[{"modelName":"claude-new","inputTokens":10,"outputTokens":10,"cacheCreationTokens":0,"cacheReadTokens":980,"cost":0}]}]}]}'
+EOF
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" PRODWATCH_CCUSAGE_TTL=0 bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
+}
+
 @test "prodwatch tracks the identity from the identity file" {
   local stub_dir="$TEST_DIR/bin" repo="$TEST_DIR/home/work/office-repo"
   mkdir -p "$stub_dir" "$repo" "$TEST_DIR/home/projects" "$TEST_DIR/home/.config/prodwatch"

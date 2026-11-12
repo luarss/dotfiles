@@ -32,11 +32,18 @@ usage_cache_is_fresh() {
   [ "$age" -lt "$CCUSAGE_TTL" ]
 }
 
+usage_is_fully_priced() {
+  jq -e '[.daily[]?.agents[]?.modelBreakdowns[]?
+          | select((.inputTokens + .outputTokens + .cacheCreationTokens + .cacheReadTokens) > 0 and .cost == 0)]
+         | length == 0' "$1" >/dev/null 2>&1
+}
+
 refresh_usage_cache() {
   local fresh
   mkdir -p "$CACHE_DIR"
   fresh="$(mktemp "$CACHE_DIR/ccusage.XXXXXX")"
-  if ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$fresh" 2>/dev/null && [ -s "$fresh" ]; then
+  if ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$fresh" 2>/dev/null && [ -s "$fresh" ] \
+    && usage_is_fully_priced "$fresh"; then
     mv -f "$fresh" "$USAGE_CACHE"
     find "$CACHE_DIR" -name 'ccusage-*.json' ! -name "$(basename "$USAGE_CACHE")" -delete 2>/dev/null
   else
