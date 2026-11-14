@@ -670,6 +670,21 @@ install_node_tools() {
   done
 }
 
+FLI_REPO="https://github.com/luarss/fli"
+FLI_COMMIT="d59d79291994aeb44861b7784e25bba333cf5aa6"
+
+install_fli() {
+  if is_work_machine || is_office_machine; then
+    echo "SKIP  fli (work/office machine)"
+    return
+  fi
+  [ -n "${DOTFILES_SKIP_FLI:-}" ] && { echo "SKIP  fli (DOTFILES_SKIP_FLI set)"; return; }
+  command -v uv >/dev/null || { echo "SKIP  fli (uv not found)"; return; }
+
+  uv tool install --force --quiet "flights @ git+$FLI_REPO@$FLI_COMMIT"
+  echo "INST  fli ($FLI_COMMIT)"
+}
+
 install_bin() {
   mkdir -p "$HOME/.local/bin"
   local bin
@@ -800,6 +815,8 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Install pinned npm CLI tools from tools/package-lock.json
   install_node_tools
+
+  install_fli
 
   install_bin
 

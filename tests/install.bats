@@ -23,6 +23,7 @@ setup() {
 
   # Skip the npm ci for pinned tools (network-dependent, per-test $HOME)
   export DOTFILES_SKIP_NODE_TOOLS=1
+  export DOTFILES_SKIP_FLI=1
   # Skip zsh plugins clone (network-dependent, per-test $HOME)
   export DOTFILES_SKIP_ZSH_PLUGINS=1
   export DOTFILES_SKIP_FINDER_DEFAULTS=1
