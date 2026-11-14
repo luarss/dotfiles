@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -8,6 +9,17 @@ from dataclasses import dataclass, field
 
 SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "__pycache__", ".terraform", "dist", "build", ".next"}
 DEAD_STATUSES = {"MISSING", "MERGED", "SQUASHED", "GONE"}
+
+
+def resolve_git_binary():
+    if sys.platform == "darwin" and shutil.which("xcrun"):
+        result = subprocess.run(["xcrun", "--find", "git"], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    return "git"
+
+
+GIT_BINARY = resolve_git_binary()
 
 
 @dataclass
@@ -18,6 +30,8 @@ class Worktree:
     branch: str = ""
     prunable: bool = False
     locked: bool = False
+    upstream: str = ""
+    upstream_gone: bool = False
     status: str = ""
     reason: str = ""
     dirty: bool = False
@@ -26,7 +40,7 @@ class Worktree:
 
 def git(repo, *args, check=False):
     result = subprocess.run(
-        ["git", "-C", repo, *args],
+        [GIT_BINARY, "-C", repo, *args],
         capture_output=True,
         text=True,
         env={**os.environ, "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0"},
@@ -87,20 +101,22 @@ def is_squash_merged(repo, commit, target):
     merge_base = git(repo, "merge-base", target, commit).stdout.strip()
     if not merge_base:
         return False
-    tree = git(repo, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
-    synthetic = git(repo, "commit-tree", tree, "-p", merge_base, "-m", "squash-probe").stdout.strip()
+    synthetic = git(repo, "commit-tree", f"{commit}^{{tree}}", "-p", merge_base, "-m", "squash-probe").stdout.strip()
     if not synthetic:
         return False
     cherry = git(repo, "cherry", target, synthetic).stdout.strip()
     return cherry.startswith("-")
 
 
-def upstream_state(repo, branch):
+def upstream_states(repo):
     output = git(
-        repo, "for-each-ref", "--format=%(upstream)|%(upstream:track)", f"refs/heads/{branch}"
-    ).stdout.strip()
-    upstream, _, track = output.partition("|")
-    return upstream, track == "[gone]"
+        repo, "for-each-ref", "--format=%(refname:short)|%(upstream)|%(upstream:track)", "refs/heads"
+    ).stdout
+    states = {}
+    for line in output.splitlines():
+        branch, upstream, track = line.split("|", 2)
+        states[branch] = (upstream, track == "[gone]")
+    return states
 
 
 def is_dirty(path):
@@ -121,7 +137,7 @@ def classify(worktree, target_ref):
         return
     target_name = target_ref.removeprefix("refs/remotes/")
     commit = worktree.branch or worktree.head
-    upstream, upstream_gone = upstream_state(repo, worktree.branch) if worktree.branch else ("", False)
+    upstream, upstream_gone = worktree.upstream, worktree.upstream_gone
 
     if is_ancestor(repo, commit, target_ref):
         if worktree.branch and not upstream:
@@ -140,20 +156,22 @@ def classify(worktree, target_ref):
         worktree.status, worktree.reason = "ACTIVE", "upstream exists, unmerged"
 
 
-def analyze_repo(repo, remote, fetch):
+def prepare_repo(repo, remote, fetch):
     warnings = []
+    try:
+        worktrees = list_worktrees(repo)
+    except RuntimeError as error:
+        return [], None, [str(error)]
+    if not worktrees:
+        return [], None, warnings
     if fetch:
         fetched = git(repo, "fetch", "--prune", "--quiet", remote)
         if fetched.returncode != 0:
             warnings.append(f"fetch failed in {repo}: {fetched.stderr.strip()}")
-    try:
-        worktrees = list_worktrees(repo)
-    except RuntimeError as error:
-        return [], [str(error)]
-    target_ref = default_branch_ref(repo, remote)
+    states = upstream_states(repo)
     for worktree in worktrees:
-        classify(worktree, target_ref)
-    return worktrees, warnings
+        worktree.upstream, worktree.upstream_gone = states.get(worktree.branch, ("", False))
+    return worktrees, default_branch_ref(repo, remote), warnings
 
 
 def is_removable(worktree, force):
@@ -211,14 +229,16 @@ def main():
     root = os.path.abspath(args.root)
     repos = find_repos(root)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda repo: analyze_repo(repo, args.remote, not args.no_fetch), repos))
+        results = list(pool.map(lambda repo: prepare_repo(repo, args.remote, not args.no_fetch), repos))
 
-    worktrees = []
-    for repo_worktrees, warnings in results:
-        worktrees.extend(repo_worktrees)
-        for warning in warnings:
-            print(f"warning: {warning}", file=sys.stderr)
-    worktrees.sort(key=lambda w: (w.repo, w.path))
+        jobs = []
+        for repo_worktrees, target_ref, warnings in results:
+            jobs.extend((worktree, target_ref) for worktree in repo_worktrees)
+            for warning in warnings:
+                print(f"warning: {warning}", file=sys.stderr)
+        list(pool.map(lambda job: classify(*job), jobs))
+
+    worktrees = sorted((worktree for worktree, _ in jobs), key=lambda w: (w.repo, w.path))
 
     dead = [w for w in worktrees if w.status in DEAD_STATUSES]
     if args.remove:
