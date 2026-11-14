@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -36,6 +37,51 @@ class Worktree:
     reason: str = ""
     dirty: bool = False
     actions: list = field(default_factory=list)
+
+
+class Progress:
+    BAR_WIDTH = 30
+
+    def __init__(self, label, total, enabled):
+        self.label = label
+        self.total = total
+        self.enabled = enabled and total > 0
+        self.done = 0
+        self.lock = threading.Lock()
+        self.render()
+
+    def advance(self):
+        with self.lock:
+            self.done += 1
+            self.render()
+
+    def render(self):
+        if not self.enabled:
+            return
+        filled = self.BAR_WIDTH * self.done // self.total
+        bar = "#" * filled + "-" * (self.BAR_WIDTH - filled)
+        sys.stderr.write(f"\r\033[K{self.label} [{bar}] {self.done}/{self.total}")
+        sys.stderr.flush()
+
+    def finish(self):
+        if self.enabled:
+            sys.stderr.write("\r\033[K")
+            sys.stderr.flush()
+
+
+def run_with_progress(pool, function, items, label, enabled):
+    progress = Progress(label, len(items), enabled)
+
+    def tracked(item):
+        try:
+            return function(item)
+        finally:
+            progress.advance()
+
+    try:
+        return list(pool.map(tracked, items))
+    finally:
+        progress.finish()
 
 
 def git(repo, *args, check=False):
@@ -221,32 +267,43 @@ def parse_args():
     parser.add_argument("--delete-branches", action="store_true", help="with --remove, also delete the local branch")
     parser.add_argument("--force", action="store_true", help="with --remove, also remove dead worktrees with uncommitted changes")
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--no-progress", action="store_true", help="hide the progress bar")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     root = os.path.abspath(args.root)
+    show_progress = sys.stderr.isatty() and not args.no_progress
     repos = find_repos(root)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda repo: prepare_repo(repo, args.remote, not args.no_fetch), repos))
+        results = run_with_progress(
+            pool,
+            lambda repo: prepare_repo(repo, args.remote, not args.no_fetch),
+            repos,
+            "Fetching repos" if not args.no_fetch else "Scanning repos",
+            show_progress,
+        )
 
         jobs = []
         for repo_worktrees, target_ref, warnings in results:
             jobs.extend((worktree, target_ref) for worktree in repo_worktrees)
             for warning in warnings:
                 print(f"warning: {warning}", file=sys.stderr)
-        list(pool.map(lambda job: classify(*job), jobs))
+        run_with_progress(pool, lambda job: classify(*job), jobs, "Classifying worktrees", show_progress)
 
     worktrees = sorted((worktree for worktree, _ in jobs), key=lambda w: (w.repo, w.path))
 
     dead = [w for w in worktrees if w.status in DEAD_STATUSES]
     if args.remove:
+        progress = Progress("Removing worktrees", len(dead), show_progress)
         for worktree in dead:
             if is_removable(worktree, args.force):
                 remove(worktree, args.delete_branches)
             else:
                 worktree.actions.append("skipped: dirty (use --force)")
+            progress.advance()
+        progress.finish()
 
     shown = worktrees if args.all else dead
     if shown:
