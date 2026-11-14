@@ -63,10 +63,10 @@ GH_CACHE="$CACHE_DIR/github-$(date +%Y%m%d).json"
 GH_TTL="${PRODWATCH_GH_TTL:-300}"
 GH_MIN_REMAINING="${PRODWATCH_GH_MIN_REMAINING:-500}"
 GITHUB_QUERY='
-query($from: DateTime!, $prsOpened: String!, $authorOpened: String!, $assigneeOpened: String!,
+query($from: DateTime!, $to: DateTime!, $prsOpened: String!, $authorOpened: String!, $assigneeOpened: String!,
       $authorClosed: String!, $assigneeClosed: String!) {
   viewer {
-    contributionsCollection(from: $from) {
+    contributionsCollection(from: $from, to: $to) {
       contributionCalendar { weeks { contributionDays { date contributionCount } } }
     }
   }
@@ -93,12 +93,13 @@ github_budget_is_low() {
 }
 
 refresh_github_cache() {
-  local fresh midnight
+  local fresh midnight now
   command -v gh >/dev/null 2>&1 || return
   mkdir -p "$CACHE_DIR"
   midnight="$(date +%Y-%m-%dT00:00:00%z | sed 's/\(..\)$/:\1/')"
+  now="$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\(..\)$/:\1/')"
   fresh="$(mktemp "$CACHE_DIR/github.XXXXXX")"
-  if gh api graphql -f query="$GITHUB_QUERY" -f from="$midnight" \
+  if gh api graphql -f query="$GITHUB_QUERY" -f from="$midnight" -f to="$now" \
       -f prsOpened="is:pr author:@me created:>=$midnight" \
       -f authorOpened="is:issue author:@me created:>=$midnight" \
       -f assigneeOpened="is:issue assignee:@me created:>=$midnight" \
