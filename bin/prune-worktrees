@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "__pycache__", ".terraform", "dist", "build", ".next"}
 DEAD_STATUSES = {"MISSING", "MERGED", "SQUASHED", "GONE"}
+MERGED_STATUSES = {"MERGED", "SQUASHED"}
 
 
 def resolve_git_binary():
@@ -224,6 +225,12 @@ def is_removable(worktree, force):
     return worktree.status in DEAD_STATUSES and (force or not worktree.dirty)
 
 
+def should_delete_branch(worktree, keep_branches, delete_unmerged):
+    if keep_branches or not worktree.branch:
+        return False
+    return worktree.status in MERGED_STATUSES or delete_unmerged
+
+
 def remove(worktree, delete_branch):
     if worktree.status == "MISSING":
         git(worktree.repo, "worktree", "prune")
@@ -235,7 +242,7 @@ def remove(worktree, delete_branch):
             worktree.actions.append(f"remove failed: {result.stderr.strip()}")
             return
         worktree.actions.append("removed")
-    if delete_branch and worktree.branch:
+    if delete_branch:
         result = git(worktree.repo, "branch", "-D", worktree.branch)
         worktree.actions.append("branch deleted" if result.returncode == 0 else f"branch delete failed: {result.stderr.strip()}")
 
@@ -288,7 +295,9 @@ def parse_args():
     parser.add_argument("--no-fetch", action="store_true", help="skip git fetch --prune")
     parser.add_argument("--all", action="store_true", help="also list ACTIVE / NO_COMMITS / LOCKED worktrees")
     parser.add_argument("--remove", action="store_true", help="remove dead worktrees (default is dry run)")
-    parser.add_argument("--delete-branches", action="store_true", help="with --remove, also delete the local branch")
+    branch_policy = parser.add_mutually_exclusive_group()
+    branch_policy.add_argument("--keep-branches", action="store_true", help="with --remove, keep local branches of MERGED / SQUASHED worktrees")
+    branch_policy.add_argument("--delete-branches", action="store_true", help="with --remove, also delete local branches of GONE / MISSING worktrees (unmerged commits are lost)")
     parser.add_argument("--force", action="store_true", help="with --remove, also remove dead worktrees with uncommitted changes")
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--no-progress", action="store_true", help="hide the progress bar")
@@ -324,7 +333,7 @@ def main():
         progress = Progress("Removing worktrees", len(dead), show_progress)
         for worktree in dead:
             if is_removable(worktree, args.force):
-                remove(worktree, args.delete_branches)
+                remove(worktree, should_delete_branch(worktree, args.keep_branches, args.delete_branches))
             else:
                 worktree.actions.append("skipped: dirty (use --force)")
             progress.advance()
