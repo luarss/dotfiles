@@ -75,7 +75,7 @@ Each `run` writes the following to `~/.cache/verify-prune-worktrees/<run-id>/<la
 
 - `command.txt`: the exact argv
 - `stdout.txt`: the table (STATUS, DIRTY, BRANCH, PATH, REASON)
-- `stderr.txt`: warnings plus the summary line (`N repos, M linked worktrees, K dead … — dry run`)
+- `stderr.txt`: warnings plus the summary line (`N repos, M linked worktrees, K dead: R to remove, … — dry run`)
 - `exit-code.txt`
 - `state-before.txt` / `state-after.txt`: `git worktree list --porcelain` and `git branch -a -vv` for every fixture repo, the remote's branches, and `ls wt/`
 - `state.diff`: what the run actually changed on disk

@@ -33,7 +33,7 @@ Preconditions:
   - `feat-dirty-merged`: `...; skipped: dirty (use --force)`
   
   The summary has no `dry run` suffix. In `state.diff`, the worktree entries and `wt/` dirs for gone, merged, squashed, and missing disappear. `wt/dirty-merged` stays. The `feat-merged` and `feat-squashed` branch lines disappear; `feat-gone`, `feat-missing`, and `feat-dirty-merged` are still listed.
-- **Force with branch deletion.** Run `$V run $RUN remove-force -- --remove --force --delete-branches`. You get one row: `feat-dirty-merged`, `...; removed; branch deleted`. In `state.diff`, the `wt/dirty-merged` worktree, its dir, and the `feat-dirty-merged` branch line disappear. Stderr shows `3 repos, 7 linked worktrees, 1 dead`.
+- **Force with branch deletion.** Run `$V run $RUN remove-force -- --remove --force --delete-branches`. You get one row: `feat-dirty-merged`, `...; removed; branch deleted`. In `state.diff`, the `wt/dirty-merged` worktree, its dir, and the `feat-dirty-merged` branch line disappear. Stderr shows `3 repos, 7 linked worktrees, 1 dead: 1 removed, 1 branches deleted`.
 - **Live worktrees intact.** In `remove-force/state-after.txt`, the worktrees for active, detached, empty, local, locked, and noremote are still listed, and their dirs exist under `wt/`.
 
 ## Gotchas

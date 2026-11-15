@@ -288,6 +288,25 @@ def print_table(worktrees, root, force, use_color):
         print(colorize(line, color, use_color))
 
 
+def summarize(dead, args):
+    removable = [w for w in dead if is_removable(w, args.force)]
+    skipped_dirty = len(dead) - len(removable)
+    if args.remove:
+        removed = sum(1 for w in removable if {"removed", "pruned"} & set(w.actions))
+        failed = len(removable) - removed
+        deleted_branches = sum(1 for w in removable if "branch deleted" in w.actions)
+        parts = [f"{removed} removed", f"{deleted_branches} branches deleted"]
+        if failed:
+            parts.append(f"{failed} failed")
+    else:
+        branches = sum(1 for w in removable if should_delete_branch(w, args.keep_branches, args.delete_branches))
+        parts = [f"{len(removable)} to remove", f"{branches} branches to delete"]
+    if skipped_dirty:
+        parts.append(f"{skipped_dirty} skipped (dirty, use --force)")
+    summary = f"{len(dead)} dead: " + ", ".join(parts)
+    return summary if args.remove else summary + " — dry run, pass --remove to delete"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Find git worktrees whose branch is merged or deleted on the remote.")
     parser.add_argument("root", nargs="?", default=os.path.expanduser("~/work"))
@@ -346,13 +365,7 @@ def main():
         use_color = args.color == "always"
     if shown:
         print_table(shown, root, args.force, use_color)
-    skipped_dirty = sum(1 for w in dead if w.dirty and not args.force)
-    print(
-        f"\n{len(repos)} repos, {len(worktrees)} linked worktrees, {len(dead)} dead"
-        + (f" ({skipped_dirty} dirty)" if skipped_dirty else "")
-        + ("" if args.remove else " — dry run, pass --remove to delete"),
-        file=sys.stderr,
-    )
+    print(f"\n{len(repos)} repos, {len(worktrees)} linked worktrees, {summarize(dead, args)}", file=sys.stderr)
 
 
 if __name__ == "__main__":

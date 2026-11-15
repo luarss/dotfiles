@@ -14,7 +14,7 @@ Running `prune-worktrees` without `--remove` prints a table of linked worktrees 
 - `classify-locked` reports a locked worktree as LOCKED.
 - `classify-unknown` reports a repo with no remote default branch as UNKNOWN.
 - `classify-dirty` sets DIRTY=`yes` when there are uncommitted or untracked files.
-- `classify-summary` prints `N repos, M linked worktrees, K dead (D dirty) — dry run, pass --remove to delete` on stderr.
+- `classify-summary` prints `N repos, M linked worktrees, K dead: R to remove, B branches to delete, D skipped (dirty, use --force) — dry run, pass --remove to delete` on stderr (the skipped part only when D > 0).
 
 ## How to get to it (user POV)
 
@@ -28,7 +28,7 @@ Preconditions:
 
 - Fresh fixture. `$V doctor $RUN` is clean.
 
-- **Dead-only report.** Run `$V run $RUN dry-dead -- --no-fetch`. Exit `0`. stdout rows are exactly MERGED `feat-dirty-merged` (DIRTY `yes`), MERGED `feat-merged`, MISSING `feat-missing`, and SQUASHED `feat-squashed`. No ACTIVE, NO_COMMITS, LOCKED, or UNKNOWN rows. stderr ends with `3 repos, 11 linked worktrees, 4 dead (1 dirty) — dry run, pass --remove to delete`.
+- **Dead-only report.** Run `$V run $RUN dry-dead -- --no-fetch`. Exit `0`. stdout rows are exactly MERGED `feat-dirty-merged` (DIRTY `yes`), MERGED `feat-merged`, MISSING `feat-missing`, and SQUASHED `feat-squashed`. No ACTIVE, NO_COMMITS, LOCKED, or UNKNOWN rows. stderr ends with `3 repos, 11 linked worktrees, 4 dead: 3 to remove, 2 branches to delete, 1 skipped (dirty, use --force) — dry run, pass --remove to delete`.
 - **Full report.** Run `$V run $RUN dry-all -- --no-fetch --all`. You get 11 rows, with these REASONs:
   - `feat-active`: `upstream exists, unmerged`
   - `(<sha7>)` detached: `detached HEAD with unmerged commits`
