@@ -51,10 +51,15 @@ Selecting a provider (each sets `CLAUDE_CONFIG_DIR` to its dir):
 ```zsh
 claude       # ~/.claude (default)               ┐ short aliases, from each
 s-claude     # ~/.claude-second-profile          │ provider's `aliases` list
-d-claude     # ~/.claude-third-profile           ┘
+d-claude     # ~/.claude-third-profile           │
+a-claude     # ~/.claude-alt-profile             ┘
 cl mimo          # dispatcher: any provider by manifest key
 cl --list        # list available providers
 ```
+
+### Alternate Subscription Profile (`a-claude`)
+
+`alt` in `providers.json` is a second Anthropic subscription. It sets `extends: "default"`, so `resolve_provider` in `install.sh` deep-merges the default entry under its own fields: same model, hooks, and permissions, with `token: null` (log in with `/login`; credentials and `.claude.json` stay per-dir) and an empty `PostToolUse`, so the Obsidian memory mirror never mixes its memories into the main vault folder. Its `share` list (`skills`, `plugins`, `CLAUDE.md`, `keybindings.json`, `agents`, `output-styles`) is symlinked from `~/.claude` by `link_shared_entries`. `projects/` (auto-memory and transcripts), history, and sessions are not shared, so the main profile's memory stays out of it. The personal-machine sonnet switch also applies to every profile that extends `default`.
 
 ### Adding a New Provider
 

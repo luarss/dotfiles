@@ -77,5 +77,15 @@
       "model": "opus",
       "alwaysThinkingEnabled": true
     }
+  },
+  "alt": {
+    "dir": ".claude-alt-profile",
+    "aliases": ["a-claude"],
+    "extends": "default",
+    "token": null,
+    "share": ["skills", "plugins", "CLAUDE.md", "keybindings.json", "agents", "output-styles"],
+    "overrides": {
+      "hooks": { "PostToolUse": [] }
+    }
   }
 }

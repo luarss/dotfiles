@@ -68,8 +68,8 @@ generate_profiles() {
     [ -n "$only" ] && [ "$name" != "$only" ] && continue
     local dir token_var token pentry
     dir="$(jq -r --arg n "$name" '.[$n].dir' "$manifest")"
-    token_var="$(jq -r --arg n "$name" '.[$n].token // empty' "$manifest")"
-    pentry="$(jq -c --arg n "$name" '.[$n]' "$manifest")"
+    pentry="$(resolve_provider "$name")"
+    token_var="$(jq -r '.token // empty' <<<"$pentry")"
     token=""
     [ -n "$token_var" ] && token="${!token_var:-}"
 
@@ -85,6 +85,35 @@ generate_profiles() {
       -f "$DOTFILES/gen-settings.jq" > "$HOME/$dir/settings.json"
     echo "GEN   $HOME/$dir/settings.json ($name)"
   done
+}
+
+resolve_provider() {
+  jq -c --arg n "$1" '.[$n] as $c
+    | if $c.extends then (.[$c.extends] * ($c | del(.extends, .aliases, .dir))) + {dir: $c.dir, aliases: $c.aliases}
+      else $c end' "$DOTFILES/providers.json"
+}
+
+link_shared_entries() {
+  local name dir
+  for name in $(jq -r 'to_entries[] | select(.value.share) | .key' "$DOTFILES/providers.json"); do
+    dir="$(jq -r --arg n "$name" '.[$n].dir' "$DOTFILES/providers.json")"
+    link_shared_entries_for "$dir" "$(resolve_provider "$name")"
+  done
+}
+
+link_shared_entries_for() {
+  local dir="$1" pentry="$2" entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    local src="$HOME/.claude/$entry" dst="$HOME/$dir/$entry"
+    [ -e "$src" ] || { echo "SKIP  $dst (no $src)"; continue; }
+    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+      echo "SKIP  $dst (exists and is not a symlink)"
+      continue
+    fi
+    ln -sfn "$src" "$dst"
+    echo "LINK  $dst -> $src"
+  done < <(jq -r '.share // [] | .[]' <<<"$pentry")
 }
 
 # Generate the zsh wrapper fragment (sourced by .zshrc) from the same manifest:
@@ -821,6 +850,8 @@ if [ "$IS_DARWIN" = 1 ]; then
   # plugins there is a separate, heavier step than this settings/hooks parity fix.
   install_plugin_lock
 
+  link_shared_entries
+
   git -C "$DOTFILES" config core.hooksPath .githooks
   echo "HOOK  core.hooksPath -> .githooks"
 
@@ -907,9 +938,12 @@ fi
 
 # Personal laptops use sonnet (lower subscription limits); work machine keeps the manifest model.
 if ! is_work_machine && ! is_office_machine; then
-  jq '.model = "sonnet" | .effortLevel = "high"' "$HOME/.claude/settings.json" > "$HOME/.claude/settings.json.tmp" \
-    && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
-  echo "SET   $HOME/.claude/settings.json model -> sonnet, effortLevel -> high (personal)"
+  while IFS= read -r _dir; do
+    _settings="$HOME/$_dir/settings.json"
+    [ -f "$_settings" ] || continue
+    jq '.model = "sonnet" | .effortLevel = "high"' "$_settings" > "$_settings.tmp" && mv "$_settings.tmp" "$_settings"
+    echo "SET   $_settings model -> sonnet, effortLevel -> high (personal)"
+  done < <(jq -r 'to_entries[] | select(.key == "default" or .value.extends == "default") | .value.dir' "$DOTFILES/providers.json")
 else
   manifest_model=$(jq -r '.model' "$HOME/.claude/settings.json")
   manifest_effort=$(jq -r '.effortLevel' "$HOME/.claude/settings.json")

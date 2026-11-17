@@ -608,3 +608,26 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/.config/prodwatch/identity" ]
 }
+
+@test "alt_profile_inherits_default_but_isolates_memory_on_macos" {
+  uname() { echo "Darwin"; }
+  hostname() { echo "personal-macbook-pro"; }
+  export -f uname hostname
+  export ANTHROPIC_AUTH_TOKEN="main-token"
+
+  run bash "$INSTALL_SCRIPT"
+  [ "$status" -eq 0 ]
+
+  local alt="$HOME/.claude-alt-profile"
+  [ -f "$alt/settings.json" ]
+  [ "$(jq -c '.hooks.PreToolUse' "$alt/settings.json")" = "$(jq -c '.hooks.PreToolUse' "$HOME/.claude/settings.json")" ]
+  [ "$(jq -r '.model' "$alt/settings.json")" = "sonnet" ]
+  [ "$(jq -r '.env.ANTHROPIC_AUTH_TOKEN // "unset"' "$alt/settings.json")" = "unset" ]
+  [ "$(jq '.hooks.PostToolUse | length' "$alt/settings.json")" -eq 0 ]
+
+  [ -L "$alt/skills" ]
+  [ "$(readlink "$alt/skills")" = "$HOME/.claude/skills" ]
+  [ ! -e "$alt/projects" ]
+
+  grep -q 'a-claude() { claude_with_profile "$HOME/.claude-alt-profile"' "$HOME/.claude-profiles.zsh"
+}
