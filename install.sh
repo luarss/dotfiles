@@ -670,6 +670,21 @@ install_node_tools() {
   done
 }
 
+GCLOUD_PYTHON_ENV="$HOME/.local/share/gcloud-python"
+GCLOUD_NUMPY_VERSION="2.5.5"
+
+install_gcloud_python() {
+  command -v uv >/dev/null || { echo "SKIP  gcloud python (uv not found)"; return; }
+
+  if "$GCLOUD_PYTHON_ENV/bin/python" -c "import numpy, sys; sys.exit(numpy.__version__ != '$GCLOUD_NUMPY_VERSION')" 2>/dev/null; then
+    echo "SKIP  gcloud python (numpy $GCLOUD_NUMPY_VERSION present)"
+    return
+  fi
+  uv venv -q --allow-existing --python 3.13 "$GCLOUD_PYTHON_ENV"
+  uv pip install -q --python "$GCLOUD_PYTHON_ENV/bin/python" "numpy==$GCLOUD_NUMPY_VERSION"
+  echo "INST  gcloud python $GCLOUD_PYTHON_ENV (numpy $GCLOUD_NUMPY_VERSION)"
+}
+
 FLI_REPO="https://github.com/luarss/fli"
 FLI_COMMIT="d59d79291994aeb44861b7784e25bba333cf5aa6"
 
@@ -815,6 +830,8 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   # Install pinned npm CLI tools from tools/package-lock.json
   install_node_tools
+
+  install_gcloud_python
 
   install_fli
 
