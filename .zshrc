@@ -144,8 +144,11 @@ export PATH="$HOME/.local/bin:$PATH"
 command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
 [[ "$OSTYPE" == darwin* ]] && command -v fzf &>/dev/null && source <(fzf --zsh)
 
-# gcloud needs Python 3.10+ (macOS system python3 is 3.9)
-[[ "$OSTYPE" == darwin* ]] && export CLOUDSDK_PYTHON=/opt/homebrew/bin/python3.14
+# gcloud needs Python 3.10+, plus numpy for fast IAP tunnel uploads (install_gcloud_python)
+if [[ "$OSTYPE" == darwin* ]]; then
+  export CLOUDSDK_PYTHON="$HOME/.local/share/gcloud-python/bin/python"
+  export CLOUDSDK_PYTHON_SITEPACKAGES=1
+fi
 
 # ------ gcloud account dispatcher ------
 # gcloud   -> nusx.edu.sg GCP (default): uses the STANDARD ~/.config/gcloud so
