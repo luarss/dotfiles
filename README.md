@@ -26,7 +26,8 @@ and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
 - `install.sh` — bootstrap script
 - `.githooks/` — git hooks (`core.hooksPath`)
 - `.config/swiftbar/prodwatch.60s.sh` — SwiftBar menu-bar widget (today's git
-  activity across `~/work` and `~/projects` + Claude & Antigravity usage); symlinked on the
+  activity across `~/work` and `~/projects` + Claude & Antigravity usage; Claude
+  includes the `a-claude` profile, override with `PRODWATCH_EXTRA_CLAUDE_DIRS`); symlinked on the
   work laptop only
 - `office-mac/` — setup scripts for the shared office Macs, run by hand (not
   wired into `install.sh`): `init.sh` disables AC sleep and starts the Twingate

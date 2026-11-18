@@ -530,6 +530,68 @@ EOF
   [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
 }
 
+stub_profile_ccusage() {
+  local stub_dir="$1" default_report="$2" alt_report="$3"
+  cat > "$stub_dir/ccusage" <<EOF2
+#!/bin/bash
+echo "\$CLAUDE_CONFIG_DIR \$*" >> "$TEST_DIR/ccusage.calls"
+if [ "\$1" = claude ]; then
+  echo '$alt_report'
+else
+  echo '$default_report'
+fi
+EOF2
+  chmod +x "$stub_dir/ccusage"
+}
+
+@test "prodwatch adds alt profile usage to the Claude agent" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects" "$TEST_DIR/home/.claude-alt-profile/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_profile_ccusage "$stub_dir" \
+    '{"daily":[{"agent":"all","totalCost":1.5,"totalTokens":3000,"agents":[{"agent":"claude","totalCost":1.0,"totalTokens":2000,"modelsUsed":["claude-opus-5-5"]},{"agent":"antigravity","totalCost":0.5,"totalTokens":1000,"modelsUsed":["gemini-3"]}]}]}' \
+    '{"daily":[{"date":"today","totalCost":2.25,"totalTokens":5000,"modelsUsed":["claude-sonnet-5-5"]}]}'
+
+  run_prodwatch
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$3.75 · 8k | font=Menlo size=13" ]]
+  [[ "$output" =~ "Claude today · \$3.25 · 7k tok" ]]
+  [[ "$output" =~ "models: opus-5-5,sonnet-5-5" ]]
+  [[ "$output" =~ "Antigravity today · \$0.50 · 1k tok" ]]
+  grep -q "^$TEST_DIR/home/.claude-alt-profile claude daily" "$TEST_DIR/ccusage.calls"
+}
+
+@test "prodwatch shows alt profile usage when the default profile is idle" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects" "$TEST_DIR/home/.claude-alt-profile/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_profile_ccusage "$stub_dir" \
+    '{"daily":[]}' \
+    '{"daily":[{"date":"today","totalCost":2.25,"totalTokens":5000,"modelsUsed":["claude-opus-5-5"]}]}'
+
+  run_prodwatch
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$2.25 · 5k | font=Menlo size=13" ]]
+  [[ "$output" =~ "Claude today · \$2.25 · 5k tok" ]]
+}
+
+@test "prodwatch skips the alt profile when it does not exist" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  stub_profile_ccusage "$stub_dir" \
+    '{"daily":[{"agent":"all","totalCost":1.0,"totalTokens":2000,"agents":[{"agent":"claude","totalCost":1.0,"totalTokens":2000}]}]}' \
+    '{"daily":[{"totalCost":99,"totalTokens":99}]}'
+
+  run_prodwatch
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Claude today · \$1.00 · 2k tok" ]]
+  ! grep -q "claude daily" "$TEST_DIR/ccusage.calls"
+}
+
 @test "prodwatch tracks the identity from the identity file" {
   local stub_dir="$TEST_DIR/bin" repo="$TEST_DIR/home/work/office-repo"
   mkdir -p "$stub_dir" "$repo" "$TEST_DIR/home/projects" "$TEST_DIR/home/.config/prodwatch"

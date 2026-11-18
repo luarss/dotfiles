@@ -18,6 +18,7 @@ GITHUB_USER="${PRODWATCH_GITHUB_USER:-luarss}"
 CACHE_DIR="${PRODWATCH_CACHE_DIR:-$HOME/.cache/prodwatch}"
 CCUSAGE_TTL="${PRODWATCH_CCUSAGE_TTL:-600}"
 USAGE_CACHE="$CACHE_DIR/ccusage-$(date +%Y%m%d).json"
+EXTRA_CLAUDE_DIRS="${PRODWATCH_EXTRA_CLAUDE_DIRS:-$HOME/.claude-alt-profile}"
 
 cache_age_seconds() {
   local modified
@@ -38,12 +39,46 @@ usage_is_fully_priced() {
          | length == 0' "$1" >/dev/null 2>&1
 }
 
+MERGE_CLAUDE_USAGE='
+def add_usage($extra):
+  reduce ("inputTokens", "outputTokens", "cacheCreationTokens", "cacheReadTokens", "totalTokens", "totalCost") as $field
+    (.; .[$field] = ((.[$field] // 0) + ($extra[$field] // 0)))
+  | .modelsUsed = ((.modelsUsed // []) + ($extra.modelsUsed // []) | unique)
+  | .modelBreakdowns = ((.modelBreakdowns // []) + ($extra.modelBreakdowns // []));
+def add_claude_agent($extra):
+  if any(.agents[]?; .agent == "claude")
+  then .agents |= map(if .agent == "claude" then add_usage($extra) else . end)
+  else .agents = ((.agents // []) + [$extra + {agent: "claude"}])
+  end;
+($extra[0].daily // [])[-1] as $today
+| if $today == null then .
+  elif (.daily // []) == [] then .daily = [{agent: "all", agents: []} | add_usage($today) | add_claude_agent($today)]
+  else .daily[-1] |= (add_usage($today) | add_claude_agent($today))
+  end'
+
+merge_extra_claude_usage() {
+  local report="$1" config_dir extra merged extra_dirs
+  IFS=',' read -ra extra_dirs <<<"$EXTRA_CLAUDE_DIRS"
+  for config_dir in "${extra_dirs[@]}"; do
+    [ -d "$config_dir/projects" ] || continue
+    extra="$(mktemp "$CACHE_DIR/ccusage-extra.XXXXXX")"
+    merged="$(mktemp "$CACHE_DIR/ccusage-merged.XXXXXX")"
+    if ! CLAUDE_CONFIG_DIR="$config_dir" ccusage claude daily --json --since "$(date +%Y%m%d)" >"$extra" 2>/dev/null \
+      || ! jq --slurpfile extra "$extra" "$MERGE_CLAUDE_USAGE" "$report" >"$merged" 2>/dev/null; then
+      rm -f "$extra" "$merged"
+      return 1
+    fi
+    mv -f "$merged" "$report"
+    rm -f "$extra"
+  done
+}
+
 refresh_usage_cache() {
   local fresh
   mkdir -p "$CACHE_DIR"
   fresh="$(mktemp "$CACHE_DIR/ccusage.XXXXXX")"
   if ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$fresh" 2>/dev/null && [ -s "$fresh" ] \
-    && usage_is_fully_priced "$fresh"; then
+    && merge_extra_claude_usage "$fresh" && usage_is_fully_priced "$fresh"; then
     mv -f "$fresh" "$USAGE_CACHE"
     find "$CACHE_DIR" -name 'ccusage-*.json' ! -name "$(basename "$USAGE_CACHE")" -delete 2>/dev/null
   else
