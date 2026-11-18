@@ -1,4 +1,5 @@
 {
+  "tui": "fullscreen",
   "outputStyle": "Concise",
   "promptSuggestionEnabled": false,
   "cleanupPeriodDays": 365,
