@@ -68,6 +68,28 @@ teardown() { rm -rf "$ROOT"; }
   [ -z "$output" ]
 }
 
+@test "hook: removes the .tmp partial when cancelled mid-copy" {
+  local stub="$ROOT/stub-bin"
+  mkdir -p "$stub"
+  local copying="$ROOT/copying"
+  printf '#!/bin/sh\n/bin/cp "$@"\ntouch "%s"\nsleep 2\n' "$copying" > "$stub/cp"
+  chmod +x "$stub/cp"
+
+  PATH="$stub:$PATH" bash "$HOOK" <<<"{\"transcript_path\":\"$SESSION\"}" &
+  local hook_pid=$!
+  local attempts=0
+  until [ -e "$copying" ] || [ "$attempts" -ge 100 ]; do
+    sleep 0.05
+    attempts=$((attempts + 1))
+  done
+  [ -e "$copying" ]
+  kill -TERM "$hook_pid"
+  wait "$hook_pid" || true
+
+  run find "$CLAUDE_ARCHIVE_DIR" -name "*.tmp.*"
+  [ -z "$output" ]
+}
+
 # --- weekday sweep -----------------------------------------------------------
 
 @test "sweep: writes a dated tarball containing the transcript" {

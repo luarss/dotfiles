@@ -46,6 +46,7 @@ mkdir -p "$DEST_DIR" || exit 0
 # Atomic copy: write to a temp file in the same dir, then rename over the
 # destination so Drive never syncs a half-written transcript.
 TMP="$DEST.tmp.$$"
+trap 'rm -f "$TMP"; exit 0' TERM INT HUP
 if cp "$TRANSCRIPT" "$TMP" 2>/dev/null; then
   mv -f "$TMP" "$DEST" 2>/dev/null || rm -f "$TMP"
 fi

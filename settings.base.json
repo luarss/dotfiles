@@ -53,7 +53,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/archive-session.sh"
+            "command": "bash ~/.claude/hooks/archive-session.sh",
+            "timeout": 15
           }
         ]
       }
