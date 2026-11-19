@@ -26,6 +26,7 @@ setup() {
   export STUB_MERGED="$ROOT/merged"
   export STUB_CHECKS_STATUS=0
   export STUB_MERGEABLE=MERGEABLE
+  export STUB_NUMBER=7
 
   mkdir -p "$ROOT/bin"
   cat > "$ROOT/bin/gh" <<'STUB'
@@ -44,7 +45,7 @@ case "$1 $2" in
     if [[ "$*" == *mergeCommit* ]]; then
       echo "{\"mergeCommit\":{\"oid\":\"$(git -C "$STUB_REMOTE" rev-parse main)\"}}"
     else
-      echo "{\"number\":7,\"title\":\"feat\",\"url\":\"https://x/pull/7\",\"state\":\"OPEN\",\"mergeable\":\"$STUB_MERGEABLE\",\"headRefName\":\"feat\",\"headRefOid\":\"$STUB_HEAD_OID\",\"baseRefName\":\"main\"}"
+      echo "{\"number\":$STUB_NUMBER,\"title\":\"feat\",\"url\":\"https://x/pull/7\",\"state\":\"OPEN\",\"mergeable\":\"$STUB_MERGEABLE\",\"headRefName\":\"feat\",\"headRefOid\":\"$STUB_HEAD_OID\",\"baseRefName\":\"main\"}"
     fi
     ;;
 esac
@@ -105,4 +106,28 @@ teardown() { rm -rf "$ROOT"; }
   [ "$status" -eq 1 ]
   [[ "$output" == *"uncommitted changes"* ]]
   [ ! -e "$STUB_MERGED" ]
+}
+
+@test "reports no milestone for an ordinary PR" {
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"milestone="* ]]
+}
+
+@test "reports a milestone for every 100th PR number" {
+  export STUB_NUMBER=1000
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"milestone=pr:1000"* ]]
+}
+
+@test "reports a milestone when the merge is the 100th commit on base" {
+  for _ in $(seq 98); do git -C "$MAIN" commit -q --allow-empty -m filler; done
+  git -C "$MAIN" push -q origin main
+  git -C "$WORKTREE" rebase -q main
+  git -C "$WORKTREE" push -qf origin feat
+  export STUB_HEAD_OID; STUB_HEAD_OID="$(git -C "$WORKTREE" rev-parse HEAD)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"milestone=commit:100"* ]]
 }

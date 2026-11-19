@@ -15,6 +15,13 @@ branch_worktree() {
     $0 == ref {print path; exit}'
 }
 
+report_milestone() {
+  local kind="$1" count="$2"
+  if [ "$count" -gt 0 ] && [ $((count % 100)) -eq 0 ]; then
+    echo "milestone=$kind:$count"
+  fi
+}
+
 checks_pass() {
   local number="$1" output
   if output=$(gh pr checks "$number" 2>&1); then
@@ -76,6 +83,11 @@ if [ "$(git -C "$main_dir" branch --show-current)" = "$base" ]; then
   git -C "$main_dir" pull -q --ff-only || note "$main_dir pull --ff-only failed"
 else
   note "$main_dir not on $base; not pulled"
+fi
+
+report_milestone pr "$number"
+if commit_count=$(git -C "$main_dir" rev-list --count "$sha" 2>/dev/null); then
+  report_milestone commit "$commit_count"
 fi
 
 wiki_dir="$(dirname "$main_dir")/wiki"
