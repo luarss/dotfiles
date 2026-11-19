@@ -66,7 +66,9 @@ if git -C "$main_dir" ls-remote --exit-code --heads origin "$branch" >/dev/null 
   git -C "$main_dir" push -q origin --delete "$branch" || note "remote branch delete failed"
 fi
 
-if [ -n "$worktree" ]; then
+if [ "$worktree" = "$main_dir" ]; then
+  note "$branch is checked out in $main_dir; switch it to $base by hand"
+elif [ -n "$worktree" ]; then
   if git -C "$main_dir" worktree remove "$worktree" 2>/dev/null; then
     echo "worktree_removed=$worktree"
   else
