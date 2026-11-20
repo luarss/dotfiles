@@ -22,18 +22,36 @@ report_milestone() {
   fi
 }
 
-checks_pass() {
-  local number="$1" output
-  if output=$(gh pr checks "$number" 2>&1); then
-    return 0
+checks_state() {
+  local number="$1" output status=0
+  output=$(gh pr checks "$number" 2>&1) || status=$?
+  if [ "$status" -eq 0 ] || [[ "$output" == *"no checks reported"* ]]; then
+    echo pass
+  elif [ "$status" -eq 8 ]; then
+    echo pending
+  else
+    echo fail
   fi
-  [[ "$output" == *"no checks reported"* ]]
 }
 
-pr_json=$(gh pr view ${1:+"$1"} --json number,title,url,state,mergeable,headRefName,headRefOid,baseRefName)
+fetch_pr() {
+  pr_json=$(gh pr view ${1:+"$1"} --json number,title,url,state,mergeable,headRefName,headRefOid,baseRefName)
+}
 field() { jq -r ".$1" <<<"$pr_json"; }
 
+fetch_pr "${1:-}"
 number=$(field number)
+
+retries="${MERGE_PR_UNKNOWN_RETRIES:-20}"
+delay="${MERGE_PR_UNKNOWN_DELAY:-15}"
+attempt=0
+while [ "$(field mergeable)" = UNKNOWN ] && [ "$attempt" -lt "$retries" ]; do
+  attempt=$((attempt + 1))
+  echo "waiting: PR #$number mergeable=UNKNOWN, retry $attempt/$retries in ${delay}s" >&2
+  sleep "$delay"
+  fetch_pr "$number"
+done
+
 url=$(field url)
 branch=$(field headRefName)
 head_oid=$(field headRefOid)
@@ -41,7 +59,18 @@ base=$(field baseRefName)
 
 [ "$(field state)" = OPEN ] || die "PR #$number is $(field state)"
 [ "$(field mergeable)" = MERGEABLE ] || die "PR #$number mergeable=$(field mergeable)"
-checks_pass "$number" || die "PR #$number checks not green (gh pr checks $number)"
+
+checks_retries="${MERGE_PR_CHECKS_RETRIES:-40}"
+checks_delay="${MERGE_PR_CHECKS_DELAY:-30}"
+attempt=0
+checks=$(checks_state "$number")
+while [ "$checks" = pending ] && [ "$attempt" -lt "$checks_retries" ]; do
+  attempt=$((attempt + 1))
+  echo "waiting: PR #$number checks pending, retry $attempt/$checks_retries in ${checks_delay}s" >&2
+  sleep "$checks_delay"
+  checks=$(checks_state "$number")
+done
+[ "$checks" = pass ] || die "PR #$number checks $checks (gh pr checks $number)"
 
 main_dir=$(main_worktree)
 worktree=$(branch_worktree "$branch")

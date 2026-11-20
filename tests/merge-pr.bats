@@ -27,12 +27,23 @@ setup() {
   export STUB_CHECKS_STATUS=0
   export STUB_MERGEABLE=MERGEABLE
   export STUB_NUMBER=7
+  export STUB_VIEWS="$ROOT/views"
+  export STUB_UNKNOWN_VIEWS=0
+  export MERGE_PR_UNKNOWN_DELAY=0
+  export STUB_CHECKS="$ROOT/checks"
+  export STUB_PENDING_CHECKS=0
+  export MERGE_PR_CHECKS_DELAY=0
 
   mkdir -p "$ROOT/bin"
   cat > "$ROOT/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$1 $2" in
-  "pr checks") exit "$STUB_CHECKS_STATUS" ;;
+  "pr checks")
+    checks=$(( $(cat "$STUB_CHECKS" 2>/dev/null || echo 0) + 1 ))
+    echo "$checks" > "$STUB_CHECKS"
+    [ "$checks" -le "$STUB_PENDING_CHECKS" ] && exit 8
+    exit "$STUB_CHECKS_STATUS"
+    ;;
   "pr merge")
     touch "$STUB_MERGED"
     clone="$(mktemp -d)"
@@ -45,7 +56,11 @@ case "$1 $2" in
     if [[ "$*" == *mergeCommit* ]]; then
       echo "{\"mergeCommit\":{\"oid\":\"$(git -C "$STUB_REMOTE" rev-parse main)\"}}"
     else
-      echo "{\"number\":$STUB_NUMBER,\"title\":\"feat\",\"url\":\"https://x/pull/7\",\"state\":\"OPEN\",\"mergeable\":\"$STUB_MERGEABLE\",\"headRefName\":\"feat\",\"headRefOid\":\"$STUB_HEAD_OID\",\"baseRefName\":\"main\"}"
+      mergeable="$STUB_MERGEABLE"
+      views=$(( $(cat "$STUB_VIEWS" 2>/dev/null || echo 0) + 1 ))
+      echo "$views" > "$STUB_VIEWS"
+      [ "$views" -le "$STUB_UNKNOWN_VIEWS" ] && mergeable=UNKNOWN
+      echo "{\"number\":$STUB_NUMBER,\"title\":\"feat\",\"url\":\"https://x/pull/7\",\"state\":\"OPEN\",\"mergeable\":\"$mergeable\",\"headRefName\":\"feat\",\"headRefOid\":\"$STUB_HEAD_OID\",\"baseRefName\":\"main\"}"
     fi
     ;;
 esac
@@ -88,7 +103,35 @@ teardown() { rm -rf "$ROOT"; }
   export STUB_CHECKS_STATUS=1
   run bash "$SCRIPT"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"checks not green"* ]]
+  [[ "$output" == *"checks fail"* ]]
+  [ ! -e "$STUB_MERGED" ]
+}
+
+@test "retries while checks are pending, then merges" {
+  export STUB_PENDING_CHECKS=2
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checks pending, retry 2/40"* ]]
+  [[ "$output" != *"checks pending, retry 3/40"* ]]
+  [ -e "$STUB_MERGED" ]
+}
+
+@test "aborts when checks stay pending past the retry limit" {
+  export STUB_PENDING_CHECKS=100
+  export MERGE_PR_CHECKS_RETRIES=2
+  run bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"checks pending"* ]]
+  [ "$(cat "$STUB_CHECKS")" -eq 3 ]
+  [ ! -e "$STUB_MERGED" ]
+}
+
+@test "aborts when checks fail after being pending" {
+  export STUB_PENDING_CHECKS=1
+  export STUB_CHECKS_STATUS=1
+  run bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"checks fail"* ]]
   [ ! -e "$STUB_MERGED" ]
 }
 
@@ -97,6 +140,25 @@ teardown() { rm -rf "$ROOT"; }
   run bash "$SCRIPT"
   [ "$status" -eq 1 ]
   [[ "$output" == *"mergeable=CONFLICTING"* ]]
+  [ ! -e "$STUB_MERGED" ]
+}
+
+@test "retries while mergeable is UNKNOWN, then merges" {
+  export STUB_UNKNOWN_VIEWS=3
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retry 3/20"* ]]
+  [[ "$output" != *"retry 4/20"* ]]
+  [ -e "$STUB_MERGED" ]
+}
+
+@test "aborts when mergeable stays UNKNOWN past the retry limit" {
+  export STUB_UNKNOWN_VIEWS=100
+  export MERGE_PR_UNKNOWN_RETRIES=2
+  run bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"mergeable=UNKNOWN"* ]]
+  [ "$(cat "$STUB_VIEWS")" -eq 3 ]
   [ ! -e "$STUB_MERGED" ]
 }
 
