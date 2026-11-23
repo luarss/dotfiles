@@ -17,7 +17,6 @@ Personal dotfiles for macOS/zsh. Managed with a simple `install.sh` bootstrap sc
 - `gen-settings.jq` — jq program that layers `settings.base.json` + `file-permissions.json` + a provider's env/overrides into a final `settings.json`
 
 - `.claude/`, `.claude-second-profile/`, `.claude-third-profile/`, `.claude-alt-profile/` — Per-profile dirs (`AGENTS.md`, hooks, etc.). Their `settings.json` is **generated**, not committed. Instruction files are `AGENTS.md` (no `CLAUDE.md` — `settings.base.json` sets `instructionFiles: "claude-md-or-agents-md"`, so Claude Code loads `AGENTS.md` directly).
-- `.githooks/` — Git hooks directory (configured via `core.hooksPath`)
 - `office-mac/` — Standalone setup scripts for the shared office Macs, run manually (not called by `install.sh`). `init.sh` sets `pmset -c sleep 0` and starts the `twingate-connector` docker container for the `nusx` network, pulling its access/refresh tokens from GCP Secret Manager (`nusx-enterprise` project) at run time — no tokens live in the repo. `caffeinate.sh` replaces any running `caffeinate` with a 7-day `caffeinate -dims`, so the Mac and its display stay awake while locked
 
 ## Machine Classes
@@ -79,7 +78,7 @@ export XIAOMI_AUTH_TOKEN="..."      # for d-claude / cl mimo
 ./install.sh
 ```
 
-On macOS the script symlinks dotfiles into `$HOME`, generates every profile's `settings.json` and the zsh wrappers from `providers.json`, and configures git to use `.githooks/` via `core.hooksPath`. It symlinks each profile's `AGENTS.md`. On Linux it installs only the default profile's settings/hooks/skills/commands, plus `~/.zshrc`.
+On macOS the script symlinks dotfiles into `$HOME` and generates every profile's `settings.json` and the zsh wrappers from `providers.json`. It symlinks each profile's `AGENTS.md`. On Linux it installs only the default profile's settings/hooks/skills/commands, plus `~/.zshrc`.
 
 `~/.zshrc` itself is installed differently per OS (`setup_zsh_config` in `install.sh`): on macOS it's a plain symlink (edits are live); on Linux it's a real file containing `source "$DOTFILES/.zshrc"`, deliberately **not** a symlink — bwrap (the sandbox this path targets) follows symlinks when precomputing its tmpfs bind-mount points, so a symlink to an unmounted target fails with ENOENT, while a real file only needs bwrap to resolve two concrete paths.
 
@@ -98,10 +97,6 @@ The overrides enforce:
 - Disabling extraneous AI nudges (`showFeedbackSurvey`, `showTips`, `notifications`)
 - Strict gitignore boundaries (`allowAgentAccessGitignoreFiles: false`, etc.)
 - Fine-grained deny/allow file boundaries synchronized with Claude Code.
-
-## Git Hooks
-
-- `post-checkout` — Copies `.env` from main worktree to new worktrees (for `git worktree add`)
 
 ## Daily Session Log (launchd, macOS)
 

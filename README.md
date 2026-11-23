@@ -12,8 +12,8 @@ export XIAOMI_AUTH_TOKEN="..."      # d-claude / cl mimo
 ./install.sh
 ```
 
-Symlinks dotfiles into `$HOME`, generates each Claude profile's `settings.json`
-and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
+Symlinks dotfiles into `$HOME` and generates each Claude profile's `settings.json`
+and the zsh wrappers from `providers.json`.
 
 ## Contents
 
@@ -24,7 +24,6 @@ and the zsh wrappers from `providers.json`, and points git at `.githooks/`.
 - `settings.base.json` — shared `settings.json` content for every profile
 - `gen-settings.jq` — layers base + permissions + provider into each profile's `settings.json`
 - `install.sh` — bootstrap script
-- `.githooks/` — git hooks (`core.hooksPath`)
 - `.config/swiftbar/prodwatch.60s.sh` — SwiftBar menu-bar widget (today's git
   activity across `~/work` and `~/projects` + Claude & Antigravity usage; Claude
   includes the `a-claude` profile, override with `PRODWATCH_EXTRA_CLAUDE_DIRS`); symlinked on the

@@ -852,9 +852,6 @@ if [ "$IS_DARWIN" = 1 ]; then
 
   link_shared_entries
 
-  git -C "$DOTFILES" config core.hooksPath .githooks
-  echo "HOOK  core.hooksPath -> .githooks"
-
   # Install custom zsh plugins (requires Oh My Zsh to be installed first)
   install_zsh_plugin "zsh-users/zsh-autosuggestions" "" "v0.7.1" "e52ee8ca55bcc56a17c828767a3f98f22a68d4eb"
   install_zsh_plugin "zsh-users/zsh-syntax-highlighting" "" "0.8.0" "db085e4661f6aafd24e5acb5b2e17e4dd5dddf3e"
