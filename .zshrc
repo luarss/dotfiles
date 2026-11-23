@@ -76,6 +76,8 @@ plugins=(
     zsh-syntax-highlighting
 )
 
+fpath=("${${(%):-%x}:A:h}/zsh/completions" $fpath)
+
 source $ZSH/oh-my-zsh.sh
 
 # User configuration

@@ -1,0 +1,15 @@
+#compdef prune-worktrees
+
+_arguments -s -S \
+  '(- *)'{-h,--help}'[show help and exit]' \
+  '--remote=[remote to compare branches against]:remote:_git_remotes' \
+  '--no-fetch[skip git fetch --prune]' \
+  '--all[also list ACTIVE / NO_COMMITS / LOCKED worktrees]' \
+  '--remove[remove dead worktrees (default is dry run)]' \
+  '(--delete-branches)--keep-branches[with --remove, keep local branches of MERGED / SQUASHED worktrees]' \
+  '(--keep-branches)--delete-branches[with --remove, also delete local branches of GONE / MISSING worktrees]' \
+  '--force[with --remove, also remove dead worktrees with uncommitted changes]' \
+  '--jobs=[number of parallel workers]:jobs:' \
+  '--no-progress[hide the progress bar]' \
+  '--color=[color table rows by outcome]:when:(auto always never)' \
+  '1:root directory:_directories'
