@@ -13,15 +13,6 @@ Each section has:
 
 The point of this skill is to make the journaling workflow fast enough that the user actually keeps up with it (2–3 minutes per entry), while enforcing enough structure that the entries remain useful for performance reviews, 1:1s, and interviews months later.
 
-## When to invoke
-
-Invoke this skill when the user:
-
-- Uses a slash command: `/win`, `/learning`, `/feedback`, `/discussion`
-- Asks to log/record/add something to their diary, journal, or any of the four sections by name
-- Asks to query, search, filter, or summarize past entries (e.g. "what wins did I log last quarter?", "pull up the feedback from my skip-level")
-- References the diary in passing in a way that implies they want to interact with it ("I should note this as a learning")
-
 If the user's intent is ambiguous between logging and just chatting, ask briefly before routing through the workflow.
 
 ## Setup
