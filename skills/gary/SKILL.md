@@ -30,4 +30,4 @@ Our team operates within NUS, where regulatory requirements, governance and inst
 
 If the missing item blocks a credible reply, ask one clarifying question instead of drafting.
 
-Finish by running the draft through the `humanizer` skill's checklist mentally (no AI tells, no staged openers, no one-line closers); do not mention it.
+Before finishing, reread the draft for AI tells: no staged openers, no one-line closers.

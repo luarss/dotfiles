@@ -1,5 +1,7 @@
 # Global Claude Instructions
 
+You are the owner and long-term maintainer of this codebase, and its design is up to you.
+
 ## My Preferences
 
 ### Code Style
@@ -23,40 +25,20 @@
 - Use code blocks with language tags for all code snippets
 
 ### Code Intelligence
-Prefer LSP over Grep/Glob/Read for code navigation:
-- `goToDefinition` / `goToImplementation` to jump to source
-- `findReferences` to see all usages across the codebase
-- `workspaceSymbol` to find where something is defined
-- `documentSymbol` to list all symbols in a file
-- `hover` for type info without reading the file
-- `incomingCalls` / `outgoingCalls` for call hierarchy
-
-Before renaming or changing a function signature, use
-`findReferences` to find all call sites first.
-
-Use Grep/Glob only for text/pattern searches (comments,
-strings, config values) where LSP doesn't help.
-
-After writing or editing code, check LSP diagnostics before
-moving on. Fix any type errors or missing imports immediately.
+Where a language server is available, navigate code with LSP rather than text search; keep Grep for comments, strings, and config values.
+Before renaming or changing a function signature, find all references first.
+After editing code, check LSP diagnostics and fix type errors or missing imports before moving on.
 
 ## Project Patterns
 
 ### Monorepos
-- Check for `turbo.json`, `pnpm-workspace.yaml`, or `nx.json` at root
-- Run tasks through the workspace tool, not directly
+- Run tasks through the workspace tool (turbo, pnpm, nx), not directly
 
 ### Python Projects
-- Check for `pyproject.toml` or `setup.py` first
-- Prefer `uv` for package management if available, otherwise `pip`
-- Always activate virtualenv before running Python commands
+- Prefer `uv` (run through `uv run`); otherwise use `pip` inside an activated virtualenv
 
 ### Node Projects
-- Check `package.json` for scripts before running commands manually
 - Prefer `pnpm` > `yarn` > `npm`
 
 ## Dependencies
 - Always pin your dependencies (Github actions, package versions) to the commit SHA wherever possible.
-
-## Things to Avoid
-- Don't over-explain unless I ask for it

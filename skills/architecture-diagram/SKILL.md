@@ -32,7 +32,7 @@ Use JetBrains Mono for all text (monospace, technical aesthetic):
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 ```
 
-Font sizes: 12px for component names, 9px for sublabels, 8px for annotations, 7px for tiny labels.
+Font sizes: 11px for component names, 9px for sublabels, 8px for annotations, 7px for tiny labels.
 
 ### Visual Elements
 
@@ -76,7 +76,7 @@ Font sizes: 12px for component names, 9px for sublabels, 8px for annotations, 7p
 
 ### Spacing Rules
 
-**CRITICAL:** When stacking components vertically, ensure proper spacing to avoid overlaps:
+When stacking components vertically, leave enough spacing that nothing overlaps:
 
 - **Standard component height:** 60px for services, 80-120px for larger components
 - **Minimum vertical gap between components:** 40px
@@ -94,7 +94,7 @@ Component B: y=170, height=60  → ends at y=230
 
 ### Legend Placement
 
-**CRITICAL:** Place legends OUTSIDE all boundary boxes (region boundaries, cluster boundaries, security groups).
+Place legends outside all boundary boxes (region boundaries, cluster boundaries, security groups).
 
 - Calculate where all boundaries end (y position + height)
 - Place legend at least 20px below the lowest boundary
@@ -172,6 +172,6 @@ Copy and customize the template at `resources/template.html`. Key customization 
 Always produce a single self-contained `.html` file with:
 - Embedded CSS (no external stylesheets except Google Fonts)
 - Inline SVG (no external images)
-- No JavaScript required (pure CSS animations)
+- Pure CSS animations; the only JavaScript is the export toolbar
 
 The file should render correctly when opened directly in any modern browser. The export toolbar uses two CDN scripts (html2canvas and jsPDF) — no other JavaScript dependencies.
