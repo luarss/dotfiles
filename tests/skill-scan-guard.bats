@@ -6,9 +6,9 @@
 # no trivy binary and no network dependency. The hook decides allow/block from
 # the reported finding count, not the scanner's exit code.
 
-setup() {
-  HOOK="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks/skill-scan-guard.sh"
-  WORKDIR="$(mktemp -d)"
+setup_file() {
+  export HOOK="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks/skill-scan-guard.sh"
+  export WORKDIR="$(mktemp -d)"
 
   # Default: pretend we're on the work laptop unless a test overrides.
   hostname() { echo "Shuis-MacBook-Air"; }
@@ -17,7 +17,7 @@ setup() {
   # Stub scanner: emits Trivy --format json with STUB_ISSUES findings (default
   # 0 = clean), reported as Vulnerabilities. Each finding's Title carries a
   # "stub-scan" marker so tests can assert whether the scanner actually ran.
-  STUB="$WORKDIR/scan-stub.sh"
+  export STUB="$WORKDIR/scan-stub.sh"
   cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
 n="${STUB_ISSUES:-0}"; vulns=""; i=0
@@ -30,18 +30,22 @@ exit "${STUB_RC:-0}"
 EOF
   chmod +x "$STUB"
   export SKILL_SCAN_CMD="$STUB"
+
+  # Read-only fixture dirs used across tests.
+  mkdir -p "$WORKDIR/sk" "$WORKDIR/myskill" "$WORKDIR/badskill" \
+    "$WORKDIR/mp" "$WORKDIR/skills" "$WORKDIR/other"
 }
 
-teardown() {
+teardown_file() {
   rm -rf "$WORKDIR"
   unset -f hostname
 }
 
 # Feed a Bash command to the hook as PreToolUse JSON on stdin.
 run_hook() {
-  local cmd="$1" json
-  json="$(jq -n --arg c "$cmd" '{tool_input: {command: $c}}')"
-  run bash -c 'printf "%s" "$1" | bash "$2"' _ "$json" "$HOOK"
+  local escaped="${1//\\/\\\\}"
+  escaped="${escaped//\"/\\\"}"
+  run bash "$HOOK" <<<"{\"tool_input\":{\"command\":\"$escaped\"}}"
 }
 
 @test "non-work host: install command is allowed without scanning" {

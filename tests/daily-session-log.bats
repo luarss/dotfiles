@@ -13,77 +13,103 @@
 # The script's env knobs (SESSION_LOG_*) point discovery + notes repo at
 # fixtures we build in setup.
 
-setup() {
-  SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/scripts/daily-session-log.sh"
-  ROOT="$(mktemp -d)"
-  export HOME="$ROOT/home"
-  mkdir -p "$HOME/.claude/projects"
+setup_file() {
+  export SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/scripts/daily-session-log.sh"
+  export TEMPLATE_ROOT="$(mktemp -d)"
 
-  # Stub bin dir, put first on PATH so it wins over real agy/gh.
-  BIN="$ROOT/bin"; mkdir -p "$BIN"
-  CALLS="$ROOT/gh-calls.log"; : > "$CALLS"
+  # Shared stub bin dir, put first on PATH so it wins over real agy/gh.
+  export SHARED_BIN="$TEMPLATE_ROOT/bin"
+  mkdir -p "$SHARED_BIN"
 
-  cat > "$BIN/agy" <<EOF
+  cat > "$SHARED_BIN/agy" <<'EOF'
 #!/usr/bin/env bash
-# Ignore all args; emit a canned \`agy --print\` JSON response with a usage block so
+# Ignore all args; emit a canned `agy --print` JSON response with a usage block so
 # the cost-audit path is exercised (1000 input + 100 output = 1100 total tokens).
 # STUB_STATUS=ERROR (with STUB_ERROR) exercises the error/skip path.
-bullets="\${STUB_BULLETS:-- did a concrete thing in foo.py:10}"
-status="\${STUB_STATUS:-SUCCESS}"
-if [ "\$status" = "SUCCESS" ]; then
-  jq -nc --arg t "\$bullets" \\
-    '{conversation_id:"c1", status:"SUCCESS", response:\$t, error:"",
-      usage:{input_tokens:1000, output_tokens:100, thinking_tokens:0, cache_read_tokens:0, total_tokens:1100}}'
+bullets="${STUB_BULLETS:-- did a concrete thing in foo.py:10}"
+status="${STUB_STATUS:-SUCCESS}"
+if [ "$status" = "SUCCESS" ]; then
+  case "$bullets" in
+    *\"*|*\\*|*$'\n'*)
+      jq -nc --arg t "$bullets" \
+        '{conversation_id:"c1", status:"SUCCESS", response:$t, error:"",
+          usage:{input_tokens:1000, output_tokens:100, thinking_tokens:0, cache_read_tokens:0, total_tokens:1100}}'
+      ;;
+    *)
+      printf '{"conversation_id":"c1","status":"SUCCESS","response":"%s","error":"","usage":{"input_tokens":1000,"output_tokens":100,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":1100}}\n' "$bullets"
+      ;;
+  esac
 else
-  jq -nc --arg e "\${STUB_ERROR:-boom}" \\
-    '{conversation_id:"", status:"ERROR", response:"", error:\$e,
-      usage:{input_tokens:0, output_tokens:0, thinking_tokens:0, cache_read_tokens:0, total_tokens:0}}'
+  err="${STUB_ERROR:-boom}"
+  case "$err" in
+    *\"*|*\\*|*$'\n'*)
+      jq -nc --arg e "$err" \
+        '{conversation_id:"", status:"ERROR", response:"", error:$e,
+          usage:{input_tokens:0, output_tokens:0, thinking_tokens:0, cache_read_tokens:0, total_tokens:0}}'
+      ;;
+    *)
+      printf '{"conversation_id":"","status":"ERROR","response":"","error":"%s","usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0}}\n' "$err"
+      ;;
+  esac
 fi
 EOF
-  chmod +x "$BIN/agy"
+  chmod +x "$SHARED_BIN/agy"
 
-  cat > "$BIN/gh" <<EOF
+  cat > "$SHARED_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
-echo "gh \$*" >> "$CALLS"
+echo "gh $*" >> "$GH_CALLS_LOG"
 # 'pr view' returns nonzero (no existing PR) so the script takes the create path.
-case "\$1 \$2" in
+case "$1 $2" in
   "pr view") exit 1 ;;
   "pr create") cat >/dev/null; echo "https://example/pr/1"; exit 0 ;;
 esac
 exit 0
 EOF
-  chmod +x "$BIN/gh"
-  export PATH="$BIN:$PATH"
+  chmod +x "$SHARED_BIN/gh"
 
-  # Work-session fixture. WORK_ROOT is fixed so the encoded project-dir prefix
-  # is predictable regardless of the temp HOME path.
-  export SESSION_LOG_WORK_ROOT="/Users/tester/work"
-  local proj="$HOME/.claude/projects/-Users-tester-work-demo"
+  # Template fixture tree copied into each test's fresh ROOT.
+  local tpl="$TEMPLATE_ROOT/tpl"
+  local proj="$tpl/home/.claude/projects/-Users-tester-work-demo"
   mkdir -p "$proj"
-  SESSION="$proj/aaaaaaaa-1111-2222-3333-444444444444.jsonl"
-  cat > "$SESSION" <<'EOF'
+  cat > "$proj/aaaaaaaa-1111-2222-3333-444444444444.jsonl" <<'EOF'
 {"type":"user","message":{"role":"user","content":"please fix the parser"},"cwd":"/Users/tester/work/demo","timestamp":"2026-08-27T09:00:00Z"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","text":"secret internal reasoning"},{"type":"text","text":"Fixed it in parser.py:12"}]}}
 EOF
 
   # Notes repo with a committed weekly note + a local bare "origin".
-  ORIGIN="$ROOT/origin.git"; git init --quiet --bare "$ORIGIN"
-  NOTES="$ROOT/notes"; git init --quiet "$NOTES"
-  git -C "$NOTES" config user.email t@t.test
-  git -C "$NOTES" config user.name tester
-  mkdir -p "$NOTES/NUS-Enterprise/Weekly"
-  printf '# Week 35\n' > "$NOTES/NUS-Enterprise/Weekly/2026-W35.md"
-  git -C "$NOTES" add -A
-  git -C "$NOTES" commit --quiet -m init
-  git -C "$NOTES" branch -M main
-  git -C "$NOTES" remote add origin "$ORIGIN"
-  git -C "$NOTES" push --quiet -u origin main
-  git -C "$NOTES" remote set-head origin main
-  export SESSION_LOG_NOTES_REPO="$NOTES"
+  local origin="$tpl/origin.git"; git init --quiet --bare "$origin"
+  local notes="$tpl/notes"; git init --quiet "$notes"
+  git -C "$notes" config user.email t@t.test
+  git -C "$notes" config user.name tester
+  mkdir -p "$notes/NUS-Enterprise/Weekly"
+  printf '# Week 35\n' > "$notes/NUS-Enterprise/Weekly/2026-W35.md"
+  git -C "$notes" add -A
+  git -C "$notes" commit --quiet -m init
+  git -C "$notes" branch -M main
+  git -C "$notes" remote add origin "$origin"
+  git -C "$notes" push --quiet -u origin main
+  git -C "$notes" remote set-head origin main
 
+  export PATH="$SHARED_BIN:$PATH"
+  export SESSION_LOG_WORK_ROOT="/Users/tester/work"
+  export TZ=UTC
+}
+
+teardown_file() { rm -rf "$TEMPLATE_ROOT"; }
+
+setup() {
+  ROOT="$(mktemp -d)"
+  cp -R "$TEMPLATE_ROOT/tpl/." "$ROOT/"
+  export HOME="$ROOT/home"
+  export GH_CALLS_LOG="$ROOT/gh-calls.log"
+  : > "$GH_CALLS_LOG"
+  SESSION="$HOME/.claude/projects/-Users-tester-work-demo/aaaaaaaa-1111-2222-3333-444444444444.jsonl"
+  ORIGIN="$ROOT/origin.git"
+  NOTES="$ROOT/notes"
+  git -C "$NOTES" remote set-url origin "$ORIGIN"
+  export SESSION_LOG_NOTES_REPO="$NOTES"
   # Isolate from the real ~/work/dotfiles/.env (agy uses its own cached auth).
   export SESSION_LOG_ENV="$ROOT/nonexistent.env"
-  export TZ=UTC
 }
 
 teardown() { rm -rf "$ROOT"; }

@@ -7,27 +7,27 @@
 # there; the archive dir and projects dir are pointed at fixtures via the
 # scripts' CLAUDE_ARCHIVE_* env knobs.
 
-setup() {
+setup_file() {
   export DOTFILES_WORK_HOSTNAME="$(hostname -s)"
 
   local base; base="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  HOOK="$base/.claude/hooks/archive-session.sh"
-  SWEEP="$base/scripts/archive-session-logs.sh"
+  export HOOK="$base/.claude/hooks/archive-session.sh"
+  export SWEEP="$base/scripts/archive-session-logs.sh"
+  export TODAY; TODAY="$(date +%Y-%m-%d)"
+  export TOUCH_30D; TOUCH_30D="$(date -v-30d +%Y%m%d%H%M.%S 2>/dev/null || date -d '30 days ago' +%Y%m%d%H%M.%S)"
+  export TOUCH_2D; TOUCH_2D="$(date -v-2d +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 days ago' +%Y%m%d%H%M.%S)"
+  export YDAY; YDAY="$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d 'yesterday' +%Y-%m-%d)"
+}
 
+setup() {
   ROOT="$(mktemp -d)"
   export HOME="$ROOT/home"
-  mkdir -p "$HOME/.claude"
-
   export CLAUDE_ARCHIVE_DIR="$ROOT/archive"
   export CLAUDE_ARCHIVE_PROJECTS_DIR="$ROOT/projects"
-  mkdir -p "$CLAUDE_ARCHIVE_DIR"
-
   PROJ="$CLAUDE_ARCHIVE_PROJECTS_DIR/-Users-tester-work-demo"
-  mkdir -p "$PROJ"
+  mkdir -p "$HOME/.claude" "$CLAUDE_ARCHIVE_DIR" "$PROJ"
   SESSION="$PROJ/aaaaaaaa-1111-2222-3333-444444444444.jsonl"
   printf '{"type":"user","message":{"role":"user","content":"hi"}}\n' > "$SESSION"
-
-  export TODAY; TODAY="$(date +%Y-%m-%d)"
 }
 
 teardown() { rm -rf "$ROOT"; }
@@ -72,18 +72,22 @@ teardown() { rm -rf "$ROOT"; }
   local stub="$ROOT/stub-bin"
   mkdir -p "$stub"
   local copying="$ROOT/copying"
-  printf '#!/bin/sh\n/bin/cp "$@"\ntouch "%s"\nsleep 2\n' "$copying" > "$stub/cp"
+  # Copy the file to create the .tmp partial, publish our PID so the test can
+  # interrupt us immediately after signalling the hook, and block in sleep.
+  printf '#!/bin/sh\n/bin/cp "$@"\necho "$$" > "%s"\nexec sleep 10\n' "$copying" > "$stub/cp"
   chmod +x "$stub/cp"
 
   PATH="$stub:$PATH" bash "$HOOK" <<<"{\"transcript_path\":\"$SESSION\"}" &
   local hook_pid=$!
   local attempts=0
-  until [ -e "$copying" ] || [ "$attempts" -ge 100 ]; do
-    sleep 0.05
+  until [ -s "$copying" ] || [ "$attempts" -ge 200 ]; do
+    sleep 0.02
     attempts=$((attempts + 1))
   done
-  [ -e "$copying" ]
+  [ -s "$copying" ]
+  local cp_pid; cp_pid="$(cat "$copying")"
   kill -TERM "$hook_pid"
+  kill -TERM "$cp_pid" 2>/dev/null || true
   wait "$hook_pid" || true
 
   run find "$CLAUDE_ARCHIVE_DIR" -name "*.tmp.*"
@@ -119,7 +123,7 @@ teardown() { rm -rf "$ROOT"; }
   run bash "$SWEEP"; [ "$status" -eq 0 ]
   # Age the sole session well past the lookback floor so only the watermark
   # (which the first run advanced to 'now') governs selection.
-  touch -t "$(date -v-30d +%Y%m%d%H%M.%S 2>/dev/null || date -d '30 days ago' +%Y%m%d%H%M.%S)" "$SESSION"
+  touch -t "$TOUCH_30D" "$SESSION"
   run bash "$SWEEP"
   [ "$status" -eq 0 ]
   [[ "$output" == *"no transcripts modified since reference"* ]]
@@ -132,7 +136,7 @@ teardown() { rm -rf "$ROOT"; }
   # default 7-day lookback floor, so the next run must still capture it.
   local recent="$PROJ/bbbbbbbb-2222.jsonl"
   printf '{"type":"user"}\n' > "$recent"
-  touch -t "$(date -v-2d +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 days ago' +%Y%m%d%H%M.%S)" "$recent"
+  touch -t "$TOUCH_2D" "$recent"
   run bash "$SWEEP"
   [ "$status" -eq 0 ]
   run tar tzf "$CLAUDE_ARCHIVE_DIR/sweeps/$TODAY.tar.gz"
@@ -142,10 +146,9 @@ teardown() { rm -rf "$ROOT"; }
 @test "sweep: append-only — a prior day's tarball is never removed" {
   # Simulate yesterday's sweep output.
   mkdir -p "$CLAUDE_ARCHIVE_DIR/sweeps"
-  local yday; yday="$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d 'yesterday' +%Y-%m-%d)"
-  echo old > "$CLAUDE_ARCHIVE_DIR/sweeps/$yday.tar.gz"
+  echo old > "$CLAUDE_ARCHIVE_DIR/sweeps/$YDAY.tar.gz"
   run bash "$SWEEP"
   [ "$status" -eq 0 ]
-  [ -f "$CLAUDE_ARCHIVE_DIR/sweeps/$yday.tar.gz" ]      # untouched
+  [ -f "$CLAUDE_ARCHIVE_DIR/sweeps/$YDAY.tar.gz" ]      # untouched
   [ -f "$CLAUDE_ARCHIVE_DIR/sweeps/$TODAY.tar.gz" ]     # today's added
 }

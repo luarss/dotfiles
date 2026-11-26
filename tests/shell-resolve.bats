@@ -14,13 +14,13 @@
 # claude forwarding test we re-prepend the stub dir after sourcing; the wrapper
 # resolves `command claude` at call time, so the stub then wins regardless.
 
-setup() {
+setup_file() {
   command -v zsh >/dev/null || skip "zsh not installed"
 
-  DOTFILES="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  INSTALL_SCRIPT="$DOTFILES/install.sh"
+  export DOTFILES="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  local install_script="$DOTFILES/install.sh"
 
-  TEST_HOME="$(mktemp -d)"
+  export TEST_HOME="$(mktemp -d)"
   export HOME="$TEST_HOME"
 
   # Isolate from the repo's real .env (install.sh sources it before the
@@ -33,7 +33,7 @@ setup() {
   : > "$HOME/.oh-my-zsh/oh-my-zsh.sh"
 
   # Stub binaries the .zshrc guards on with `command -v`.
-  STUB_BIN="$HOME/stub-bin"
+  export STUB_BIN="$HOME/stub-bin"
   mkdir -p "$STUB_BIN"
 
   # Fake zoxide: `zoxide init zsh` must emit a `z` function, mirroring real zoxide.
@@ -58,11 +58,11 @@ EOF
   # Generate just ~/.claude-profiles.zsh from providers.json. Sourcing install.sh
   # only loads its functions (the install steps self-skip when sourced), so we
   # skip the git clones / symlinks / settings generation we don't need here.
-  source "$INSTALL_SCRIPT"
+  source "$install_script"
   generate_zsh_profiles >/dev/null
 }
 
-teardown() {
+teardown_file() {
   rm -rf "$TEST_HOME"
 }
 

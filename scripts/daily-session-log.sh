@@ -108,7 +108,7 @@ save_watermark() { touch -r "$RUN_MARKER" "$WATERMARK"; }
 # --- which sessions? ("since last run" watermark) ---------------------------
 # Encode ~/work the way Claude Code names project dirs: every "/" becomes "-".
 # e.g. /Users/me/work -> -Users-me-work ; children are "<prefix>-<name>".
-WORK_PREFIX="$(printf '%s' "$WORK_ROOT" | sed 's#/#-#g')"
+WORK_PREFIX="${WORK_ROOT//\//-}"
 
 # Select sessions modified since the last successful run, using the watermark
 # file's own mtime as the `find -newer` reference (full precision; portable,
@@ -158,28 +158,43 @@ logged_labels=()    # for the run-summary log line
 sum_in=0; sum_out=0; sum_total=0; calls_made=0   # cost-audit accumulators
 
 for sf in "${sessions[@]}"; do
-  sid="$(basename "$sf" .jsonl)"
+  sid="${sf##*/}"
+  sid="${sid%.jsonl}"
   sid8="${sid:0:8}"
 
-  # Label: prefer the session's AI title, else the working dir's basename.
-  label="$(jq -rs 'map(select(.type=="ai-title") | .title) | last // empty' "$sf" 2>/dev/null)"
-  if [ -z "$label" ]; then
-    cwd="$(jq -rs 'map(select(.cwd) | .cwd) | last // empty' "$sf" 2>/dev/null)"
-    label="$(basename "${cwd:-$sid8}")"
-  fi
+  # Extract label (preferring AI title, else cwd basename) and transcript in a
+  # single jq pass over the JSONL file.
+  parsed_sf="$SCRATCH/parsed-session.txt"
+  jq -rs '
+    ((map(select(.type=="ai-title") | .title) | last // "") | gsub("[\r\n]+"; " ")),
+    ((map(select(.cwd) | .cwd) | last // "") | gsub("[\r\n]+"; " ")),
+    (
+      map(
+        select(.type=="user" or .type=="assistant")
+        | .message as $m
+        | ($m.role // "?") as $r
+        | ($m.content) as $c
+        | if ($c|type)=="string" then "\($r): \($c)"
+          else ($c | map(select(.type=="text") | .text) | join("\n")) as $t
+               | if ($t|length) > 0 then "\($r): \($t)" else empty end
+          end
+      ) | join("\n\n")
+    )
+  ' "$sf" 2>/dev/null > "$parsed_sf" || : > "$parsed_sf"
 
-  transcript="$(jq -rs '
-    map(
-      select(.type=="user" or .type=="assistant")
-      | .message as $m
-      | ($m.role // "?") as $r
-      | ($m.content) as $c
-      | if ($c|type)=="string" then "\($r): \($c)"
-        else ($c | map(select(.type=="text") | .text) | join("\n")) as $t
-             | if ($t|length) > 0 then "\($r): \($t)" else empty end
-        end
-    ) | join("\n\n")
-  ' "$sf" 2>/dev/null | head -c "$CAP_BYTES")"
+  title="" cwd=""
+  {
+    IFS= read -r title || true
+    IFS= read -r cwd || true
+  } < "$parsed_sf"
+  if [ -n "$title" ]; then
+    label="$title"
+  elif [ -n "$cwd" ]; then
+    label="${cwd##*/}"
+  else
+    label="$sid8"
+  fi
+  transcript="$(tail -n +3 "$parsed_sf" | head -c "$CAP_BYTES")"
 
   # Skip sessions with essentially no conversational content.
   if [ "${#transcript}" -lt 40 ]; then
@@ -199,18 +214,24 @@ ${transcript}" \
     --output-format json --model "$GEMINI_MODEL" --effort "$AGY_EFFORT" \
     --print-timeout 120s --disable-slash-commands \
     2>>"$SCRATCH/agy.err" || true)"
-  status="$(printf '%s' "$resp" | jq -r '.status // empty' 2>/dev/null)"
-  raw="$(printf '%s' "$resp" | jq -r '.response // empty' 2>/dev/null)"
-  err="$(printf '%s' "$resp" | jq -r '.error // empty' 2>/dev/null)"
 
-  # Token usage for the audit (from agy's usage block; 0 when the call errored).
-  # Gemini bills thinking tokens as output, so fold thinking into the output count;
-  # total_tokens already includes them, so u_in + u_out == u_total holds.
-  u_in="$(printf '%s' "$resp" | jq -r '.usage.input_tokens // 0' 2>/dev/null)"; u_in="${u_in:-0}"
-  u_think="$(printf '%s' "$resp" | jq -r '.usage.thinking_tokens // 0' 2>/dev/null)"; u_think="${u_think:-0}"
-  u_out="$(printf '%s' "$resp" | jq -r '.usage.output_tokens // 0' 2>/dev/null)"; u_out="${u_out:-0}"
+  # Parse all fields from agy's JSON response in a single jq invocation.
+  # Token usage feeds the audit (0 when the call errored). Gemini bills thinking
+  # tokens as output, so fold thinking into the output count; total_tokens already
+  # includes them, so u_in + u_out == u_total holds.
+  status="" raw="" err="" u_in=0 u_think=0 u_out=0 u_total=0
+  parsed_resp="$(printf '%s' "$resp" | jq -r '
+    "status="  + ((.status // "") | tostring | @sh),
+    "raw="     + ((.response // "") | tostring | @sh),
+    "err="     + ((.error // "") | tostring | @sh),
+    "u_in="    + ((.usage.input_tokens // 0) | tostring | @sh),
+    "u_think=" + ((.usage.thinking_tokens // 0) | tostring | @sh),
+    "u_out="   + ((.usage.output_tokens // 0) | tostring | @sh),
+    "u_total=" + ((.usage.total_tokens // 0) | tostring | @sh)
+  ' 2>/dev/null || true)"
+  [ -n "$parsed_resp" ] && eval "$parsed_resp"
+  u_in="${u_in:-0}"; u_think="${u_think:-0}"; u_out="${u_out:-0}"; u_total="${u_total:-0}"
   u_out=$(( u_out + u_think ))
-  u_total="$(printf '%s' "$resp" | jq -r '.usage.total_tokens // 0' 2>/dev/null)"; u_total="${u_total:-0}"
   call_cost="$(calc_cost "$u_in" "$u_out")"
 
   # Keep only bullet lines; guards against any stray preamble the model emits.
@@ -273,7 +294,8 @@ fi
 # All work happens in a throwaway detached worktree at origin/<base>. We commit
 # there and push directly to <base>; idempotent same-day reruns are handled by the
 # per-(session,date) marker already present in the note we fetched from origin.
-base="$(git -C "$NOTES_REPO" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's#.*/##')"
+base="$(git -C "$NOTES_REPO" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+base="${base##*/}"
 base="${base:-main}"
 git -C "$NOTES_REPO" fetch --quiet origin "$base" || die "git fetch failed"
 WORKTREE="$SCRATCH/wt"

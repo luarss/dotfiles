@@ -8,39 +8,43 @@
 
 HOOKS="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks"
 
-setup() {
-  WORKDIR="$(mktemp -d)"
+setup_file() {
+  export WORKDIR="$(mktemp -d)"
 
   # jq stub: records invocation, then delegates to the real jq so the hook
   # can still parse the payload on the hot path.
-  REAL_JQ="$(command -v jq)"
-  JQ_STUB="$WORKDIR/jq"
-  cat > "$JQ_STUB" <<EOF
+  local real_jq; real_jq="$(command -v jq)"
+  local jq_stub="$WORKDIR/jq"
+  cat > "$jq_stub" <<EOF
 #!/usr/bin/env bash
-touch "$WORKDIR/jq_called"
-exec "$REAL_JQ" "\$@"
+: > "$WORKDIR/jq_called"
+exec "$real_jq" "\$@"
 EOF
-  chmod +x "$JQ_STUB"
+  chmod +x "$jq_stub"
 
   # Prepend our stub dir so hooks pick it up.
   export PATH="$WORKDIR:$PATH"
 
-  # Silence symlink-memory side-effects: point its Obsidian target somewhere
-  # harmless (it will still exit early via the pre-filter or regex guard).
+  # Silence symlink-memory side-effects and isolate db-rate-limit TMPDIR.
   export HOME="$WORKDIR"
+  export TMPDIR="$WORKDIR/tmp"
+  mkdir -p "$TMPDIR"
 }
 
-teardown() {
+teardown_file() {
   rm -rf "$WORKDIR"
+}
+
+setup() {
+  rm -f "$WORKDIR/jq_called"
 }
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 bash_payload() {
   # Build a Bash PreToolUse payload without using jq (avoids touching sentinel).
-  local cmd="$1"
-  printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' \
-    "$(printf '%s' "$cmd" | sed 's/"/\\"/g')"
+  local escaped="${1//\"/\\\"}"
+  printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$escaped"
 }
 
 mcp_payload() {
@@ -49,9 +53,8 @@ mcp_payload() {
 }
 
 write_payload() {
-  local path="$1"
-  printf '{"tool_name":"Write","tool_input":{"file_path":"%s"},"cwd":"/project"}' \
-    "$(printf '%s' "$path" | sed 's/"/\\"/g')"
+  local escaped="${1//\"/\\\"}"
+  printf '{"tool_name":"Write","tool_input":{"file_path":"%s"},"cwd":"/project"}' "$escaped"
 }
 
 jq_was_called()    { [[ -f "$WORKDIR/jq_called" ]]; }
@@ -60,7 +63,7 @@ reset_sentinel()   { rm -f "$WORKDIR/jq_called"; }
 
 run_hook() {
   local hook="$1" payload="$2"
-  run bash -c 'printf "%s" "$1" | bash "$2"' _ "$payload" "$hook"
+  run bash "$hook" <<<"$payload"
 }
 
 # ─── db-guard: pre-filter ───────────────────────────────────────────────────
@@ -157,11 +160,12 @@ run_hook() {
 # CI, 50 pure-bash pre-filter exits should finish well within 2s.
 
 @test "db-guard: 50 irrelevant calls complete in under 5 seconds" {
-  local start end elapsed
+  local start end elapsed payload i
+  payload="$(bash_payload "git log --oneline -10")"
   ms() { python3 -c "import time; print(int(time.time()*1000))"; }
   start=$(ms)
-  for i in $(seq 1 50); do
-    bash_payload "git log --oneline -10" | bash "$HOOKS/db-guard.sh" >/dev/null 2>&1
+  for ((i = 1; i <= 50; i++)); do
+    bash "$HOOKS/db-guard.sh" <<<"$payload" >/dev/null 2>&1
   done
   end=$(ms)
   elapsed=$(( end - start ))

@@ -10,12 +10,12 @@
 HOOK="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks/deepseek-peak-hours-guard.sh"
 DEEPSEEK_URL="https://api.deepseek.com/anthropic"
 
-setup() {
-  WORKDIR="$(mktemp -d)"
+setup_file() {
+  export WORKDIR="$(mktemp -d)"
 
-  # date stub: intercepts -u +%H and -u +%H:%M; delegates everything else.
-  DATE_STUB="$WORKDIR/date"
-  cat > "$DATE_STUB" <<'EOF'
+  # date stub: intercepts -u +%Y%m%d, -u +%H, and -u +%H:%M; delegates everything else.
+  local date_stub="$WORKDIR/date"
+  cat > "$date_stub" <<'EOF'
 #!/usr/bin/env bash
 hour="${STUB_HOUR:-12}"
 args="$*"
@@ -26,11 +26,11 @@ case "$args" in
   *)        exec /bin/date "$@" ;;
 esac
 EOF
-  chmod +x "$DATE_STUB"
+  chmod +x "$date_stub"
   export PATH="$WORKDIR:$PATH"
 }
 
-teardown() {
+teardown_file() {
   rm -rf "$WORKDIR"
 }
 
