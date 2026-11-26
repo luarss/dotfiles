@@ -141,7 +141,8 @@ File access boundaries, protected patterns, and command deny lists are centraliz
 - **Claude Code**: Compiled into `Read(...)` and `Bash(...)` under `permissions.deny` / `allow`, plus `ignorePatterns`.
 - **Antigravity CLI**: Compiled into `read_file(...)` and `command(...)` under `permissions.deny` / `allow`, plus gitignore boundary flags (`allowAgentAccessGitignoreFiles: false`, etc.).
 - **Antigravity 2.0 Desktop**: Compiled into `read_file(...)` and `command(...)` under `userSettings.globalPermissionGrants`.
-- **Antigravity-only allows**: `allow.agy_files` (→ `read_file(...)`) and `allow.agy_write_files` (→ `write_file(...)`) feed both Antigravity targets but not Claude Code, whose `Read`/`Edit` rules treat `/path` as project-relative.
+- **Antigravity sandbox path normalization**: Antigravity's terminal sandbox (Seatbelt/nsjail) rejects relative paths (`non-absolute file path`) and wildcards (`globs not supported`) in file permission grants. `gen-permissions.jq` expands `~` → `$HOME`, collapses trailing `/*` / `/**` to parent directory paths (which Antigravity matches recursively), and omits remaining relative/glob patterns (in-repo `.env*` and gitignored secrets stay blocked via `allowAgentAccessGitignoreFiles: false`).
+- **Antigravity-only rules**: `deny.agy_files` (e.g. `~/.ssh`, `~/.env`), `allow.agy_files` (→ `read_file(...)`), and `allow.agy_write_files` (→ `write_file(...)`) feed both Antigravity targets without affecting Claude Code, whose `Read`/`Edit` rules treat `/path` as project-relative.
 
 The deny list blocks destructive `rm` commands and reads of `.env*`, SSH/AWS/GCP configs, credentials, secrets, key/pem files, database configs (`~/.my.cnf`), and shell/REPL history files (`.zsh_history`, `.bash_history`, `.mysql_history`, `.psql_history`, `fish_history`, etc., which can leak secrets typed on the command line). Edit `file-permissions.json` to change the policy across all tools at once.
 

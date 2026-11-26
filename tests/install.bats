@@ -232,9 +232,14 @@ EOF
   [ "$(jq -r '.allowAgentAccessGitignoreFiles' "$settings")" = "false" ]
   [ "$(jq -r '.allowTabAccessGitignoreFiles' "$settings")" = "false" ]
   [ "$(jq -r '.allowCascadeAccessGitignoreFiles' "$settings")" = "false" ]
-  # Deny & allow rules applied from file-permissions.json
-  [ "$(jq -r '.permissions.deny | length' "$settings")" -gt 50 ]
+  # Deny & allow rules applied from file-permissions.json (sandbox-safe absolute paths)
+  [ "$(jq -r '.permissions.deny | length' "$settings")" -gt 20 ]
   [ "$(jq -r '.permissions.deny[0]' "$settings")" = "command(rm -rf)" ]
+  [ "$(jq --arg p "read_file($HOME/.ssh)" '.permissions.deny | index($p)' "$settings")" != "null" ]
+  [ "$(jq --arg p "read_file($HOME/.aws)" '.permissions.deny | index($p)' "$settings")" != "null" ]
+  [ "$(jq --arg p "read_file($HOME/.config/gcloud)" '.permissions.deny | index($p)' "$settings")" != "null" ]
+  [ "$(jq --arg p "read_file($HOME/.zsh_history)" '.permissions.deny | index($p)' "$settings")" != "null" ]
+  [ "$(jq --arg p "read_file($HOME/.env)" '.permissions.deny | index($p)' "$settings")" != "null" ]
   [ "$(jq -r '.permissions.allow[0]' "$settings")" = "command(ccusage)" ]
   [ "$(jq -r '.permissions.allow | index("read_file(/tmp/ts-pending.json)")' "$settings")" != "null" ]
   [ "$(jq -r '.permissions.allow | index("write_file(/private/tmp/ts-decisions.json)")' "$settings")" != "null" ]
@@ -277,9 +282,10 @@ EOF
   [ "$(jq -r '.userSettings.autoExecutionPolicy' "$config")" = "CASCADE_COMMANDS_AUTO_EXECUTION_PROCEED_IN_SANDBOX" ]
   [ "$(jq -r '.userSettings.themeMode' "$config")" = "THEME_MODE_INHERIT" ]
   [ "$(jq -r '.userSettings.remoteControlHostname' "$config")" = "my-host" ]
-  # Global permission grants applied
-  [ "$(jq -r '.userSettings.globalPermissionGrants.deny | length' "$config")" -gt 50 ]
+  # Global permission grants applied (sandbox-safe absolute paths)
+  [ "$(jq -r '.userSettings.globalPermissionGrants.deny | length' "$config")" -gt 20 ]
   [ "$(jq -r '.userSettings.globalPermissionGrants.deny[0]' "$config")" = "command(rm -rf)" ]
+  [ "$(jq --arg p "read_file($HOME/.ssh)" '.userSettings.globalPermissionGrants.deny | index($p)' "$config")" != "null" ]
   [ "$(jq -r '.userSettings.globalPermissionGrants.allow[0]' "$config")" = "command(ccusage)" ]
   [ "$(jq -r '.userSettings.globalPermissionGrants.allow | index("write_file(/tmp/ts-decisions.json)")' "$config")" != "null" ]
 }
@@ -303,29 +309,26 @@ EOF
   num_files="$(jq '.deny.files | length' "$manifest")"
   num_cmds="$(jq '.deny.commands | length' "$manifest")"
 
-  # Claude output check
+  # Claude output check (retains all relative/glob rules)
   local claude_json
   claude_json="$(jq --arg target claude -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
   local claude_deny_len
   claude_deny_len="$(echo "$claude_json" | jq '.permissions.deny | length')"
-
-  # Antigravity CLI output check
-  local agy_json
-  agy_json="$(jq --arg target agy_cli -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
-  local agy_deny_len
-  agy_deny_len="$(echo "$agy_json" | jq '.permissions.deny | length')"
-
-  # Antigravity Desktop output check
-  local desktop_json
-  desktop_json="$(jq --arg target antigravity_desktop -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
-  local desktop_deny_len
-  desktop_deny_len="$(echo "$desktop_json" | jq '.userSettings.globalPermissionGrants.deny | length')"
-
-  # Antigravity CLI and Desktop deny rules must match exactly (files + commands)
-  [ "$agy_deny_len" -eq "$((num_files + num_cmds))" ]
-  [ "$desktop_deny_len" -eq "$((num_files + num_cmds))" ]
-
   [ "$claude_deny_len" -eq "$((num_files + num_cmds))" ]
+  [ "$(echo "$claude_json" | jq -r '.permissions.deny | map(select(. == "Read(~/.ssh)" or . == "Read(~/.env)")) | length')" = "0" ]
+
+  # Antigravity CLI & Desktop output check
+  local agy_json desktop_json
+  agy_json="$(jq --arg home "$HOME" --arg target agy_cli -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
+  desktop_json="$(jq --arg home "$HOME" --arg target antigravity_desktop -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
+
+  # Antigravity CLI and Desktop deny rules must match each other and contain >20 rules
+  [ "$(echo "$agy_json" | jq '.permissions.deny | length')" -gt 20 ]
+  [ "$(echo "$agy_json" | jq -c '.permissions.deny')" = "$(echo "$desktop_json" | jq -c '.userSettings.globalPermissionGrants.deny')" ]
+
+  # Sandbox safety invariant: every read_file(...) / write_file(...) target in
+  # Antigravity rules must be an absolute path starting with `/` and free of globs
+  [ "$(echo "$agy_json" | jq '[(.permissions.deny[]), (.permissions.allow[]) | capture("^(?:read|write)_file\\((?<p>.*)\\)$").p | select((startswith("/") | not) or test("[*?\\[]"))] | length')" -eq 0 ]
 
   # Parity on allow commands
   [ "$(echo "$claude_json" | jq -r '.permissions.allow[0]')" = "Bash(ccusage)" ]

@@ -64,6 +64,10 @@
     "commands": [
       "rm -rf:*",
       "rm -fr:*"
+    ],
+    "agy_files": [
+      "~/.ssh",
+      "~/.env"
     ]
   },
   "allow": {

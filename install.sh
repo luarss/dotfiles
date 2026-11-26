@@ -754,7 +754,7 @@ install_agy_settings() {
   local perms="{}"
   [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
   local agy_perms
-  agy_perms="$(jq -n --argjson perms "$perms" --arg target agy_cli -f "$DOTFILES/gen-permissions.jq")"
+  agy_perms="$(jq -n --arg home "$HOME" --argjson perms "$perms" --arg target agy_cli -f "$DOTFILES/gen-permissions.jq")"
   jq -s '.[0] * .[1] * .[2]' <(echo "$current") <(echo "$agy_perms") "$DOTFILES/agy-settings.overrides.json" > "$dst.tmp" \
     && mv "$dst.tmp" "$dst"
   echo "SET   $dst <- agy-settings.overrides.json + file-permissions.json"
@@ -772,7 +772,7 @@ install_antigravity_desktop_settings() {
   local perms="{}"
   [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
   local desktop_grants
-  desktop_grants="$(jq -n --argjson perms "$perms" --arg target antigravity_desktop -f "$DOTFILES/gen-permissions.jq")"
+  desktop_grants="$(jq -n --arg home "$HOME" --argjson perms "$perms" --arg target antigravity_desktop -f "$DOTFILES/gen-permissions.jq")"
   jq -s '.[0] * .[1]' <(echo "$current") <(echo "$desktop_grants") > "$dst.tmp" \
     && mv "$dst.tmp" "$dst"
   echo "SET   $dst <- file-permissions.json (globalPermissionGrants)"
