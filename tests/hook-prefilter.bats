@@ -11,13 +11,13 @@ HOOKS="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/.claude/hooks"
 setup_file() {
   export WORKDIR="$(mktemp -d)"
 
-  # jq stub: records invocation, then delegates to the real jq so the hook
-  # can still parse the payload on the hot path.
+  # jq stub: records invocation to per-test $JQ_SENTINEL, then delegates to the
+  # real jq so the hook can still parse the payload on the hot path.
   local real_jq; real_jq="$(command -v jq)"
   local jq_stub="$WORKDIR/jq"
   cat > "$jq_stub" <<EOF
 #!/usr/bin/env bash
-: > "$WORKDIR/jq_called"
+: > "\$JQ_SENTINEL"
 exec "$real_jq" "\$@"
 EOF
   chmod +x "$jq_stub"
@@ -25,10 +25,8 @@ EOF
   # Prepend our stub dir so hooks pick it up.
   export PATH="$WORKDIR:$PATH"
 
-  # Silence symlink-memory side-effects and isolate db-rate-limit TMPDIR.
+  # Silence symlink-memory side-effects.
   export HOME="$WORKDIR"
-  export TMPDIR="$WORKDIR/tmp"
-  mkdir -p "$TMPDIR"
 }
 
 teardown_file() {
@@ -36,7 +34,10 @@ teardown_file() {
 }
 
 setup() {
-  rm -f "$WORKDIR/jq_called"
+  export JQ_SENTINEL="$WORKDIR/jq_called.$BATS_TEST_NUMBER"
+  rm -f "$JQ_SENTINEL"
+  export TMPDIR="$WORKDIR/tmp.$BATS_TEST_NUMBER"
+  mkdir -p "$TMPDIR"
 }
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -57,9 +58,9 @@ write_payload() {
   printf '{"tool_name":"Write","tool_input":{"file_path":"%s"},"cwd":"/project"}' "$escaped"
 }
 
-jq_was_called()    { [[ -f "$WORKDIR/jq_called" ]]; }
-jq_was_not_called() { [[ ! -f "$WORKDIR/jq_called" ]]; }
-reset_sentinel()   { rm -f "$WORKDIR/jq_called"; }
+jq_was_called()    { [[ -f "$JQ_SENTINEL" ]]; }
+jq_was_not_called() { [[ ! -f "$JQ_SENTINEL" ]]; }
+reset_sentinel()   { rm -f "$JQ_SENTINEL"; }
 
 run_hook() {
   local hook="$1" payload="$2"

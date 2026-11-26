@@ -17,7 +17,7 @@ jobs:
         run: sudo apt-get install -y bats jq parallel
 
       - name: Run bats tests
-        run: bats -j "$(nproc)" tests/
+        run: bats -j "$(nproc)" --no-parallelize-within-files tests/
 
   # Runs in parallel with `bats`. The shell-resolve integration test sources the
   # real .zshrc in zsh, so it needs zsh installed (it self-skips otherwise).
