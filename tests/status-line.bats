@@ -7,19 +7,29 @@
 # name, the usage segment, and the terminal width. Then assert on the rendered
 # text and its visible length.
 
+shopt -s extglob
+
 SL="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/status-line.sh"
 
-setup() {
-  WORKDIR="$(mktemp -d)"
+setup_file() {
+  export WORKDIR="$(mktemp -d)"
   # A fixed-name, non-git directory so DIR == "proj" and get_git_info stays empty.
-  DIRPATH="$WORKDIR/proj"
+  export DIRPATH="$WORKDIR/proj"
   mkdir -p "$DIRPATH"
-  USAGE_CACHE="$WORKDIR/usage.json"
-  FETCH_CMD=""
+  export TRANSCRIPT="$WORKDIR/transcript.jsonl"
+  printf '%s\n' '{"usage":{"input_tokens":258000,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":100}}' > "$TRANSCRIPT"
+  export NOW="$(date +%s)"
 }
 
-teardown() {
+teardown_file() {
   rm -rf "$WORKDIR"
+}
+
+setup() {
+  USAGE_CACHE="$WORKDIR/usage-${BATS_TEST_NUMBER}.json"
+  RESPONSE_FILE="$WORKDIR/response-${BATS_TEST_NUMBER}.json"
+  CALLED_FILE="$WORKDIR/called-${BATS_TEST_NUMBER}"
+  FETCH_CMD=""
 }
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -29,26 +39,35 @@ sl() {
   local cols="$1" json="$2" show="${3-1}"
   COLUMNS="$cols" SHOW_USAGE_LIMITS="$show" \
     CLAUDE_USAGE_CACHE="$USAGE_CACHE" CLAUDE_USAGE_FETCH_CMD="${FETCH_CMD:-false}" \
-    bash -c 'printf "%s" "$1" | bash "$2"' _ "$json" "$SL"
+    bash "$SL" <<< "$json"
+}
+
+strip_ansi() {
+  printf '%s' "${1//$'\033'\[*([0-9;])m/}"
 }
 
 # Visible (display-cell) length, mirroring the script's own visible_len: strip
 # ANSI, count code points, add 1 per double-width glyph.
 vislen() {
-  local s wide
-  s=$(printf '%s' "$1" | sed -E $'s/\033\\[[0-9;]*m//g')
-  wide=$(printf '%s' "$s" | grep -oE '➜|⏱|⏳|⚡|⚠' | grep -c .)
+  local s nw wide
+  s="${1//$'\033'\[*([0-9;])m/}"
+  nw="${s//➜/}"
+  nw="${nw//⏱/}"
+  nw="${nw//⏳/}"
+  nw="${nw//⚡/}"
+  nw="${nw//⚠/}"
+  wide=$(( ${#s} - ${#nw} ))
   printf '%s' "$(( ${#s} + wide ))"
 }
 
-now() { date +%s; }
+now() { printf '%s' "$NOW"; }
 
 touch_stamp() {
   date -d "@$1" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$1" +%Y%m%d%H%M.%S
 }
 
-main_line() { printf '%s\n' "$1" | sed -n 1p; }
-usage_line() { printf '%s\n' "$1" | sed -n 2p; }
+main_line() { printf '%s\n' "${1%%$'\n'*}"; }
+usage_line() { [[ "$1" == *$'\n'* ]] && printf '%s\n' "${1#*$'\n'}"; }
 
 widest_line() {
   local line widest=0 len
@@ -61,26 +80,19 @@ widest_line() {
 
 # JSON with only the five_hour window. $1=used_percentage $2=resets_at (epoch).
 json_5h() {
-  jq -n --arg dir "$DIRPATH" --argjson p "$1" --argjson r "$2" \
-    '{model:{display_name:"Test",id:"test-model"},
-      workspace:{current_dir:$dir},
-      rate_limits:{five_hour:{used_percentage:$p,resets_at:$r}}}'
+  printf '{"model":{"display_name":"Test","id":"test-model"},"workspace":{"current_dir":"%s"},"rate_limits":{"five_hour":{"used_percentage":%s,"resets_at":%s}}}\n' \
+    "$DIRPATH" "$1" "$2"
 }
 
 # JSON with both windows. $1=p5 $2=r5 $3=p7 $4=r7
 json_both() {
-  jq -n --arg dir "$DIRPATH" \
-    --argjson p5 "$1" --argjson r5 "$2" --argjson p7 "$3" --argjson r7 "$4" \
-    '{model:{display_name:"Test",id:"test-model"},
-      workspace:{current_dir:$dir},
-      rate_limits:{five_hour:{used_percentage:$p5,resets_at:$r5},
-                   seven_day:{used_percentage:$p7,resets_at:$r7}}}'
+  printf '{"model":{"display_name":"Test","id":"test-model"},"workspace":{"current_dir":"%s"},"rate_limits":{"five_hour":{"used_percentage":%s,"resets_at":%s},"seven_day":{"used_percentage":%s,"resets_at":%s}}}\n' \
+    "$DIRPATH" "$1" "$2" "$3" "$4"
 }
 
 # JSON with no rate_limits at all (third-party providers).
 json_none() {
-  jq -n --arg dir "$DIRPATH" \
-    '{model:{display_name:"Test",id:"test-model"},workspace:{current_dir:$dir}}'
+  printf '{"model":{"display_name":"Test","id":"test-model"},"workspace":{"current_dir":"%s"}}\n' "$DIRPATH"
 }
 
 # ─── gating ─────────────────────────────────────────────────────────────────
@@ -199,12 +211,8 @@ json_none() {
 
 # JSON naming a specific model id, pointed at a 258k-token transcript.
 json_model() {
-  local transcript="$WORKDIR/transcript.jsonl"
-  printf '%s\n' '{"usage":{"input_tokens":258000,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":100}}' > "$transcript"
-  jq -n --arg dir "$DIRPATH" --arg id "$1" --arg t "$transcript" \
-    '{model:{display_name:"Test",id:$id},
-      workspace:{current_dir:$dir},
-      transcript_path:$t}'
+  printf '{"model":{"display_name":"Test","id":"%s"},"workspace":{"current_dir":"%s"},"transcript_path":"%s"}\n' \
+    "$1" "$DIRPATH" "$TRANSCRIPT"
 }
 
 @test "1M-context models render 258k as 25.8%" {
@@ -246,16 +254,14 @@ json_model() {
 # ─── model-scoped weekly limits (Fable) ─────────────────────────────────────
 
 usage_response() {
-  jq -n --argjson pct "$1" \
-    '{limits:[
-       {kind:"weekly_all",percent:53,resets_at:"2030-01-01T00:00:00.123+00:00",scope:null},
-       {kind:"weekly_scoped",percent:$pct,resets_at:"2030-01-01T00:00:00.123+00:00",
-        scope:{model:{id:null,display_name:"Fable"},surface:null}}]}'
+  local resets="${2:-2030-01-01T00:00:00.123+00:00}"
+  printf '{"limits":[{"kind":"weekly_all","percent":53,"resets_at":"2030-01-01T00:00:00.123+00:00","scope":null},{"kind":"weekly_scoped","percent":%s,"resets_at":"%s","scope":{"model":{"id":null,"display_name":"Fable"},"surface":null}}]}\n' \
+    "$1" "$resets"
 }
 
 stub_fetch() {
-  usage_response "$1" > "$WORKDIR/response.json"
-  FETCH_CMD="cat '$WORKDIR/response.json'"
+  usage_response "$1" > "$RESPONSE_FILE"
+  FETCH_CMD="cat '$RESPONSE_FILE'"
 }
 
 @test "Fable limit fetched on first render when cache is missing" {
@@ -268,17 +274,17 @@ stub_fetch() {
 @test "Fable limit shown in compact form" {
   stub_fetch 9
   out=$(sl 40 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
-  plain=$(printf '%s' "$out" | sed -E $'s/\033\\[[0-9;]*m//g')
+  plain=$(strip_ansi "$out")
   [[ "$plain" == *"Fable 9%"* ]]
   [[ "$plain" != *"resets"* ]]
 }
 
 @test "fresh cache is used without fetching" {
   usage_response 42 > "$USAGE_CACHE"
-  FETCH_CMD="echo fetched > '$WORKDIR/called'; false"
+  FETCH_CMD="echo fetched > '$CALLED_FILE'; false"
   out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
   [[ "$out" == *"42%"* ]]
-  [ ! -f "$WORKDIR/called" ]
+  [ ! -f "$CALLED_FILE" ]
 }
 
 @test "Fable limit hidden when SHOW_USAGE_LIMITS != 1" {
@@ -310,7 +316,7 @@ stub_fetch() {
 }
 
 @test "Fable limit hidden once cached reset time has passed" {
-  usage_response 14 | jq '.limits[1].resets_at = "2020-01-01T00:00:00.123+00:00"' > "$USAGE_CACHE"
+  usage_response 14 "2020-01-01T00:00:00.123+00:00" > "$USAGE_CACHE"
   FETCH_CMD="false"
   out=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")
   [[ "$out" == *"7d"* ]]
@@ -334,14 +340,14 @@ stub_fetch() {
   usage_response 42 > "$USAGE_CACHE"
   touch -t "$(touch_stamp $(( $(now) - 400 )))" "$USAGE_CACHE"
   echo 2 > "$USAGE_CACHE.failures"
-  FETCH_CMD="echo fetched > '$WORKDIR/called'; false"
+  FETCH_CMD="echo fetched > '$CALLED_FILE'; false"
   sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" >/dev/null
   sleep 0.2
-  [ ! -f "$WORKDIR/called" ]
+  [ ! -f "$CALLED_FILE" ]
 }
 
 @test "Fable reset shown in full form" {
   stub_fetch 9
-  plain=$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")" | sed -E $'s/\033\\[[0-9;]*m//g')
+  plain=$(strip_ansi "$(sl 300 "$(json_both 36 "$(( $(now) + 8000 ))" 18 "$(( $(now) + 185000 ))")")")
   [[ "$(usage_line "$plain")" == *"Fable 9% (resets "* ]]
 }

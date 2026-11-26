@@ -20,6 +20,8 @@
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
+shopt -s extglob
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -81,11 +83,44 @@ C_DIM=$'\033[2m'
 # Input Parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
-INPUT=$(cat)
+NOW=""
+ensure_now() {
+    [[ -n "$NOW" ]] && return 0
+    NOW=${EPOCHSECONDS:-$(date +%s)}
+}
 
-MODEL=$(echo "$INPUT" | jq -r '.model.display_name // "unknown"')
-MODEL_ID=$(echo "$INPUT" | jq -r '.model.id // ""')
-CWD=$(echo "$INPUT" | jq -r '.workspace.current_dir // "."')
+SCRIPT_DIR="${0%/*}"
+[[ "$SCRIPT_DIR" == "$0" ]] && SCRIPT_DIR="."
+MODELS_JSON="${SCRIPT_DIR}/models.json"
+
+MODEL="unknown"
+MODEL_ID=""
+CWD="."
+TRANSCRIPT=""
+RL_5H=""
+RL_7D=""
+RL_5H_RESET=""
+RL_7D_RESET=""
+CTX_LIMIT_FROM_JSON=""
+
+# Parse stdin JSON and models.json lookup in a single jq invocation.
+_jq_filter='
+  "MODEL=" + ((.model.display_name // "unknown") | tostring | @sh),
+  "MODEL_ID=" + ((.model.id // "") | tostring | @sh),
+  "CWD=" + ((.workspace.current_dir // ".") | tostring | @sh),
+  "TRANSCRIPT=" + ((.transcript_path // "") | tostring | @sh),
+  "RL_5H=" + ((.rate_limits.five_hour.used_percentage // "") | tostring | @sh),
+  "RL_7D=" + ((.rate_limits.seven_day.used_percentage // "") | tostring | @sh),
+  "RL_5H_RESET=" + ((.rate_limits.five_hour.resets_at // "") | tostring | @sh),
+  "RL_7D_RESET=" + ((.rate_limits.seven_day.resets_at // "") | tostring | @sh),
+  "CTX_LIMIT_FROM_JSON=" + (($models[0][.model.id // ""].contextWindow // "") | tostring | @sh)
+'
+if [[ -f "$MODELS_JSON" ]]; then
+    _parsed=$(jq -r --slurpfile models "$MODELS_JSON" "$_jq_filter" 2>/dev/null)
+else
+    _parsed=$(jq -r --argjson models '[{}]' "$_jq_filter" 2>/dev/null)
+fi
+[[ -n "$_parsed" ]] && eval "$_parsed"
 
 # Detect 1M-context models. Two paths:
 #   1. models.json lookup (authoritative for third-party models whose API names
@@ -94,37 +129,40 @@ CWD=$(echo "$INPUT" | jq -r '.workspace.current_dir // "."')
 #   2. Regex fallback for Anthropic models: explicit "[1m]" opt-in suffix, or
 #      native-1M families (Fable 5, Mythos 5, Opus 5, Opus 4.6/4.7/4.8,
 #      Sonnet 5, Sonnet 4.6). Haiku 4.5 is 200k and deliberately excluded.
-MODELS_JSON="$(dirname "$0")/models.json"
-CTX_LIMIT_FROM_JSON=""
-if [[ -f "$MODELS_JSON" ]]; then
-    CTX_LIMIT_FROM_JSON=$(jq -r --arg id "$MODEL_ID" '.[$id].contextWindow // empty' "$MODELS_JSON" 2>/dev/null)
-fi
-
 if [[ -n "$CTX_LIMIT_FROM_JSON" ]]; then
     CTX_LIMIT=$CTX_LIMIT_FROM_JSON
-elif echo "$MODEL_ID" | grep -qiE '1m|fable|mythos|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6'; then
-    CTX_LIMIT=$CTX_LIMIT_1M
 else
-    CTX_LIMIT=$DEFAULT_CTX_LIMIT
+    shopt -s nocasematch
+    if [[ "$MODEL_ID" =~ 1m|fable|mythos|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6 ]]; then
+        CTX_LIMIT=$CTX_LIMIT_1M
+    else
+        CTX_LIMIT=$DEFAULT_CTX_LIMIT
+    fi
+    shopt -u nocasematch
 fi
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // ""')
-DIR=$(basename "$CWD")
 
-# Subscription rate-limit usage. Each window may be independently absent (// empty),
-# and the whole block is absent outside Pro/Max OAuth sessions.
-RL_5H=$(echo "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // empty')
-RL_7D=$(echo "$INPUT" | jq -r '.rate_limits.seven_day.used_percentage // empty')
-
-# Window reset times (unix epoch seconds, // empty when absent). Used to show
-# how long until each window resets.
-RL_5H_RESET=$(echo "$INPUT" | jq -r '.rate_limits.five_hour.resets_at // empty')
-RL_7D_RESET=$(echo "$INPUT" | jq -r '.rate_limits.seven_day.resets_at // empty')
+_cwd="$CWD"
+while [[ "$_cwd" == */ && "$_cwd" != "/" ]]; do _cwd="${_cwd%/}"; done
+DIR="${_cwd##*/}"
+[[ -z "$DIR" ]] && DIR="/"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Git Status
 # ─────────────────────────────────────────────────────────────────────────────
 
 get_git_info() {
+    GIT_INFO=""
+    # Fast path: when GIT_DIR is unset and CWD is absolute, skip spawning git
+    # if no ancestor contains a .git file or directory.
+    if [[ -z "${GIT_DIR:-}" && "$CWD" == /* ]]; then
+        local _dir="$CWD"
+        while [[ ! -e "$_dir/.git" ]]; do
+            [[ "$_dir" == "/" ]] && return 0
+            _dir="${_dir%/*}"
+            [[ -z "$_dir" ]] && _dir="/"
+        done
+    fi
+
     git -C "$CWD" rev-parse --git-dir >/dev/null 2>&1 || return 0
 
     local branch dirty=""
@@ -138,7 +176,7 @@ get_git_info() {
         dirty=" ${C_YELLOW}✗"
     fi
 
-    printf " ${C_BLUE}git:(${C_RED}%s${C_BLUE})%s${C_RESET}" "$branch" "$dirty"
+    printf -v GIT_INFO " ${C_BLUE}git:(${C_RED}%s${C_BLUE})%s${C_RESET}" "$branch" "$dirty"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,20 +186,41 @@ get_git_info() {
 get_token_metrics() {
     [[ ! -f "$TRANSCRIPT" ]] && echo "0 0 0" && return 0
 
-    local in_tok cache_read cache_create out_tok total_in
-
-    in_tok=$(grep -oE '"input_tokens":[0-9]+' "$TRANSCRIPT" 2>/dev/null | grep -oE '[0-9]+' | tail -1)
-    cache_read=$(grep -oE '"cache_read_input_tokens":[0-9]+' "$TRANSCRIPT" 2>/dev/null | grep -oE '[0-9]+' | tail -1)
-    cache_create=$(grep -oE '"cache_creation_input_tokens":[0-9]+' "$TRANSCRIPT" 2>/dev/null | grep -oE '[0-9]+' | tail -1)
-    out_tok=$(grep -oE '"output_tokens":[0-9]+' "$TRANSCRIPT" 2>/dev/null | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
-
-    in_tok=${in_tok:-0}
-    cache_read=${cache_read:-0}
-    cache_create=${cache_create:-0}
-    out_tok=${out_tok:-0}
-
-    total_in=$((in_tok + cache_read + cache_create))
-    echo "$total_in $out_tok $cache_read"
+    awk '
+    {
+        if (index($0, "\"input_tokens\":")) {
+            s = $0
+            while (match(s, /"input_tokens":[0-9]+/)) {
+                in_tok = substr(s, RSTART + 15, RLENGTH - 15) + 0
+                s = substr(s, RSTART + RLENGTH)
+            }
+        }
+        if (index($0, "\"cache_read_input_tokens\":")) {
+            s = $0
+            while (match(s, /"cache_read_input_tokens":[0-9]+/)) {
+                cache_read = substr(s, RSTART + 26, RLENGTH - 26) + 0
+                s = substr(s, RSTART + RLENGTH)
+            }
+        }
+        if (index($0, "\"cache_creation_input_tokens\":")) {
+            s = $0
+            while (match(s, /"cache_creation_input_tokens":[0-9]+/)) {
+                cache_create = substr(s, RSTART + 30, RLENGTH - 30) + 0
+                s = substr(s, RSTART + RLENGTH)
+            }
+        }
+        if (index($0, "\"output_tokens\":")) {
+            s = $0
+            while (match(s, /"output_tokens":[0-9]+/)) {
+                out_tok += substr(s, RSTART + 16, RLENGTH - 16) + 0
+                s = substr(s, RSTART + RLENGTH)
+            }
+        }
+    }
+    END {
+        printf "%d %d %d\n", in_tok + cache_read + cache_create, out_tok + 0, cache_read + 0
+    }
+    ' "$TRANSCRIPT" 2>/dev/null
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,9 +228,10 @@ get_token_metrics() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 get_session_duration() {
-    [[ ! -f "$TRANSCRIPT" ]] && echo "0m" && return 0
+    DURATION="0m"
+    [[ ! -f "$TRANSCRIPT" ]] && return 0
 
-    local start_time now elapsed hours mins
+    local start_time elapsed hours mins
 
     if [[ "$OSTYPE" == darwin* ]]; then
         start_time=$(stat -f %B "$TRANSCRIPT" 2>/dev/null || echo 0)
@@ -180,17 +240,17 @@ get_session_duration() {
         [[ "$start_time" == "0" ]] && start_time=$(stat -c %Y "$TRANSCRIPT" 2>/dev/null || echo 0)
     fi
 
-    [[ -z "$start_time" || "$start_time" -le 0 ]] 2>/dev/null && echo "0m" && return 0
+    [[ -z "$start_time" || "$start_time" -le 0 ]] 2>/dev/null && return 0
 
-    now=$(date +%s)
-    elapsed=$((now - start_time))
+    ensure_now
+    elapsed=$((NOW - start_time))
     hours=$((elapsed / 3600))
     mins=$(((elapsed % 3600) / 60))
 
     if [[ $hours -gt 0 ]]; then
-        echo "${hours}h${mins}m"
+        DURATION="${hours}h${mins}m"
     else
-        echo "${mins}m"
+        DURATION="${mins}m"
     fi
 }
 
@@ -200,13 +260,19 @@ get_session_duration() {
 
 build_progress_bar() {
     local pct=$1
-    local pct_int filled empty bar="" color
+    local pct_int pct_dec pct_x10 filled empty bar="" color
 
     pct_int=${pct%.*}
     pct_int=${pct_int:-0}
+    if [[ "$pct" == *.* ]]; then
+        pct_dec=${pct#*.}
+        pct_dec=${pct_dec:0:1}
+    else
+        pct_dec=0
+    fi
 
-    filled=$(awk "BEGIN {printf \"%.0f\", ($pct / 100) * $BAR_WIDTH}")
-    filled=${filled:-0}
+    pct_x10=$(( 10#$pct_int * 10 + 10#$pct_dec ))
+    filled=$(( (pct_x10 * BAR_WIDTH + 500) / 1000 ))
     empty=$((BAR_WIDTH - filled))
 
     # Color based on usage level
@@ -221,14 +287,14 @@ build_progress_bar() {
     for ((i = 0; i < filled; i++)); do bar+="█"; done
     for ((i = 0; i < empty; i++)); do bar+="░"; done
 
-    printf "%b[%s %s%%]%b" "$color" "$bar" "$pct" "$C_RESET"
+    PROGRESS_BAR="${color}[${bar} ${pct}%]${C_RESET}"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Subscription Usage (Pro/Max OAuth only)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Color a usage percentage by threshold, returning a colored "NN%".
+# Color a usage percentage by threshold, setting _REPLY to a colored "NN%".
 colorize_usage_pct() {
     local pct=$1 pct_int color
     pct_int=${pct%.*}
@@ -242,17 +308,18 @@ colorize_usage_pct() {
         color=$C_GREEN
     fi
 
-    printf "%b%s%%%b" "$color" "$pct_int" "$C_RESET"
+    _REPLY="${color}${pct_int}%${C_RESET}"
 }
 
 # Format seconds-until-reset as a compact "(resets 2h13m)" / "(resets 14m)"
-# string. Empty when the reset timestamp is absent or already in the past.
+# string in _REPLY. Empty when the reset timestamp is absent or already in the past.
 format_reset() {
-    local reset_at=$1 now remaining days hours mins
+    _REPLY=""
+    local reset_at=$1 remaining days hours mins
     [[ -z "$reset_at" ]] && return 0
 
-    now=$(date +%s)
-    remaining=$((reset_at - now))
+    ensure_now
+    remaining=$((reset_at - NOW))
     [[ "$remaining" -le 0 ]] 2>/dev/null && return 0
 
     days=$((remaining / 86400))
@@ -260,11 +327,11 @@ format_reset() {
     mins=$(((remaining % 3600) / 60))
 
     if [[ $days -gt 0 ]]; then
-        printf " %b(resets %dd%dh)%b" "$C_DIM" "$days" "$hours" "$C_RESET"
+        _REPLY=" ${C_DIM}(resets ${days}d${hours}h)${C_RESET}"
     elif [[ $hours -gt 0 ]]; then
-        printf " %b(resets %dh%dm)%b" "$C_DIM" "$hours" "$mins" "$C_RESET"
+        _REPLY=" ${C_DIM}(resets ${hours}h${mins}m)${C_RESET}"
     else
-        printf " %b(resets %dm)%b" "$C_DIM" "$mins" "$C_RESET"
+        _REPLY=" ${C_DIM}(resets ${mins}m)${C_RESET}"
     fi
 }
 
@@ -274,24 +341,36 @@ format_reset() {
 #   window_start   = reset_at - SEVEN_DAY_WINDOW
 #   elapsed_frac   = (now - window_start) / SEVEN_DAY_WINDOW
 #   projected_pct  = used_pct / elapsed_frac
-# Emits a colored " →NN%" string (red if projected to exhaust the window,
+# Sets _REPLY to a colored " →NN%" string (red if projected to exhaust the window,
 # yellow past the warn threshold). No-op when we can't compute a stable value:
 # no reset timestamp, no usage, or too early in the window.
 project_7d_usage() {
-    local used_pct=$1 reset_at=$2 now window_start elapsed elapsed_frac projected pct_int color
+    _REPLY=""
+    local used_pct=$1 reset_at=$2 window_start elapsed p_int p_frac p_scale p_scaled denom pct_int color
     [[ -z "$used_pct" || -z "$reset_at" ]] && return 0
 
-    now=$(date +%s)
+    ensure_now
     window_start=$((reset_at - SEVEN_DAY_WINDOW))
-    elapsed=$((now - window_start))
+    elapsed=$((NOW - window_start))
     [[ "$elapsed" -le 0 ]] 2>/dev/null && return 0
 
-    elapsed_frac=$(awk "BEGIN {printf \"%.6f\", $elapsed / $SEVEN_DAY_WINDOW}")
-    # Too early in the window for a meaningful projection.
-    awk "BEGIN {exit !($elapsed_frac < $PROJECT_MIN_ELAPSED_FRAC)}" && return 0
+    # Too early in the window for a meaningful projection (< PROJECT_MIN_ELAPSED_FRAC = 0.02).
+    (( elapsed * 100 < 2 * SEVEN_DAY_WINDOW )) && return 0
 
-    projected=$(awk "BEGIN {printf \"%.0f\", $used_pct / $elapsed_frac}")
-    pct_int=${projected:-0}
+    p_int=${used_pct%.*}
+    if [[ "$used_pct" == *.* ]]; then
+        p_frac=${used_pct#*.}
+        p_frac=${p_frac:0:3}
+        while [[ ${#p_frac} -lt 3 ]]; do p_frac+="0"; done
+        p_scale=1000
+        p_scaled=$(( 10#${p_int:-0} * 1000 + 10#$p_frac ))
+    else
+        p_scale=1
+        p_scaled=$(( 10#${p_int:-0} ))
+    fi
+
+    denom=$(( elapsed * p_scale ))
+    pct_int=$(( (p_scaled * SEVEN_DAY_WINDOW + denom / 2) / denom ))
 
     if [[ $pct_int -ge 100 ]]; then
         color=$C_RED
@@ -301,7 +380,7 @@ project_7d_usage() {
         color=$C_GREEN
     fi
 
-    printf " %b→%b%b%s%%%b" "$C_DIM" "$C_RESET" "$color" "$pct_int" "$C_RESET"
+    _REPLY=" ${C_DIM}→${C_RESET}${color}${pct_int}%${C_RESET}"
 }
 
 read_oauth_token() {
@@ -347,8 +426,8 @@ refresh_usage_cache() {
 }
 
 read_failure_count() {
-    local count
-    count=$(cat "$USAGE_FAILURES_FILE" 2>/dev/null)
+    local count=""
+    [[ -f "$USAGE_FAILURES_FILE" ]] && read -r count < "$USAGE_FAILURES_FILE"
     [[ "$count" =~ ^[0-9]+$ ]] || count=0
     echo "$count"
 }
@@ -372,7 +451,8 @@ file_age_seconds() {
     else
         modified_at=$(stat -c %Y "$1" 2>/dev/null || echo 0)
     fi
-    echo $(( $(date +%s) - modified_at ))
+    ensure_now
+    FILE_AGE=$(( NOW - modified_at ))
 }
 
 ensure_usage_cache() {
@@ -381,7 +461,8 @@ ensure_usage_cache() {
         return 0
     fi
 
-    if [[ $(file_age_seconds "$USAGE_CACHE_FILE") -ge $(usage_refresh_interval) ]]; then
+    file_age_seconds "$USAGE_CACHE_FILE"
+    if [[ $FILE_AGE -ge $(usage_refresh_interval) ]]; then
         touch "$USAGE_CACHE_FILE"
         ( refresh_usage_cache </dev/null >/dev/null 2>&1 & )
     fi
@@ -389,53 +470,72 @@ ensure_usage_cache() {
 
 read_model_scoped_limits() {
     [[ -f "$USAGE_CACHE_FILE" ]] || return 0
-    jq -r --argjson now "$(date +%s)" '
+    local raw
+    raw=$(<"$USAGE_CACHE_FILE")
+    [[ -z "$raw" || "$raw" == "{}" ]] && return 0
+    ensure_now
+    jq -r --argjson now "$NOW" '
         .limits[]?
         | select(.kind == "weekly_scoped" and .scope.model.display_name != null)
         | ((.resets_at // "") | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | (try fromdateiso8601 catch "")) as $reset_at
         | select(($reset_at | type) != "number" or $reset_at > $now)
         | [.scope.model.display_name, (.percent // 0), $reset_at]
         | @tsv
-    ' "$USAGE_CACHE_FILE" 2>/dev/null
+    ' <<< "$raw" 2>/dev/null
 }
 
 load_model_scoped_limits() {
+    MODEL_SCOPED_LIMITS=""
     [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
     [[ -z "$RL_5H" && -z "$RL_7D" ]] && return 0
     ensure_usage_cache
-    read_model_scoped_limits
-}
-
-build_model_scoped_parts() {
-    local mode=$1 name pct reset_at part
-    while IFS=$'\t' read -r name pct reset_at; do
-        [[ -z "$name" ]] && continue
-        part="${C_DIM}${name}${C_RESET} $(colorize_usage_pct "$pct")"
-        [[ "$mode" == "full" ]] && part+=$(format_reset "$reset_at")
-        printf '%s\n' "$part"
-    done <<< "$MODEL_SCOPED_LIMITS"
+    MODEL_SCOPED_LIMITS=$(read_model_scoped_limits)
 }
 
 # Subscription-usage line. No-op unless SHOW_USAGE_LIMITS=1 (default profile
-# only) and at least one window is present.
+# only) and at least one window is present. Sets USAGE_SEGMENT.
 #   mode "full"    — "⏳ 5h 36% (resets 2h13m) · 7d 18% (resets 2d21h) →45% · Fable 9% (resets 2d21h)"
 #   mode "compact" — "⏳ 5h 36% 7d 18% →45% Fable 9%"
 build_usage_segment() {
+    USAGE_SEGMENT=""
     [[ "${SHOW_USAGE_LIMITS:-0}" != "1" ]] && return 0
-    local mode=${1:-full} separator=" " part parts=() line=""
+    local mode=${1:-full} separator=" " part parts=() line="" name pct reset_at
 
     if [[ "$mode" == "full" ]]; then
         separator=" ${C_DIM}·${C_RESET} "
-        [[ -n "$RL_5H" ]] && parts+=("${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")$(format_reset "$RL_5H_RESET")")
-        [[ -n "$RL_7D" ]] && parts+=("${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")$(format_reset "$RL_7D_RESET")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")")
+        if [[ -n "$RL_5H" ]]; then
+            colorize_usage_pct "$RL_5H"; part="${C_DIM}5h${C_RESET} ${_REPLY}"
+            format_reset "$RL_5H_RESET"; part+="$_REPLY"
+            parts+=("$part")
+        fi
+        if [[ -n "$RL_7D" ]]; then
+            colorize_usage_pct "$RL_7D"; part="${C_DIM}7d${C_RESET} ${_REPLY}"
+            format_reset "$RL_7D_RESET"; part+="$_REPLY"
+            project_7d_usage "$RL_7D" "$RL_7D_RESET"; part+="$_REPLY"
+            parts+=("$part")
+        fi
     else
-        [[ -n "$RL_5H" ]] && parts+=("${C_DIM}5h${C_RESET} $(colorize_usage_pct "$RL_5H")")
-        [[ -n "$RL_7D" ]] && parts+=("${C_DIM}7d${C_RESET} $(colorize_usage_pct "$RL_7D")$(project_7d_usage "$RL_7D" "$RL_7D_RESET")")
+        if [[ -n "$RL_5H" ]]; then
+            colorize_usage_pct "$RL_5H"
+            parts+=("${C_DIM}5h${C_RESET} ${_REPLY}")
+        fi
+        if [[ -n "$RL_7D" ]]; then
+            colorize_usage_pct "$RL_7D"; part="${C_DIM}7d${C_RESET} ${_REPLY}"
+            project_7d_usage "$RL_7D" "$RL_7D_RESET"; part+="$_REPLY"
+            parts+=("$part")
+        fi
     fi
 
-    while IFS= read -r part; do
-        [[ -n "$part" ]] && parts+=("$part")
-    done < <(build_model_scoped_parts "$mode")
+    if [[ -n "$MODEL_SCOPED_LIMITS" ]]; then
+        while IFS=$'\t' read -r name pct reset_at; do
+            [[ -z "$name" ]] && continue
+            colorize_usage_pct "$pct"; part="${C_DIM}${name}${C_RESET} ${_REPLY}"
+            if [[ "$mode" == "full" ]]; then
+                format_reset "$reset_at"; part+="$_REPLY"
+            fi
+            parts+=("$part")
+        done <<< "$MODEL_SCOPED_LIMITS"
+    fi
 
     [[ ${#parts[@]} -eq 0 ]] && return 0
 
@@ -443,7 +543,7 @@ build_usage_segment() {
         [[ -n "$line" ]] && line+="$separator"
         line+="$part"
     done
-    printf "%b⏳%b %s" "$C_DIM" "$C_RESET" "$line"
+    USAGE_SEGMENT="${C_DIM}⏳${C_RESET} ${line}"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -451,19 +551,22 @@ build_usage_segment() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 main() {
-    local total_in out_tok cache_read ctx_pct cache_pct duration git_info
+    local total_in=0 out_tok=0 cache_read=0 ctx_tenths ctx_pct cache_pct=0
     local cache_color cache_warn=""
 
-    read -r total_in out_tok cache_read <<< "$(get_token_metrics)"
-    total_in=${total_in:-0}
-    out_tok=${out_tok:-0}
-    cache_read=${cache_read:-0}
+    DURATION="0m"
+    if [[ -f "$TRANSCRIPT" ]]; then
+        read -r total_in out_tok cache_read <<< "$(get_token_metrics)"
+        total_in=${total_in:-0}
+        out_tok=${out_tok:-0}
+        cache_read=${cache_read:-0}
+        get_session_duration
+    fi
 
-    ctx_pct=$(awk "BEGIN {printf \"%.1f\", ($total_in / $CTX_LIMIT) * 100}")
+    ctx_tenths=$(( (total_in * 1000 + CTX_LIMIT / 2) / CTX_LIMIT ))
+    ctx_pct="$((ctx_tenths / 10)).$((ctx_tenths % 10))"
     if [[ $total_in -gt 0 ]]; then
-        cache_pct=$(awk "BEGIN {printf \"%.0f\", ($cache_read / $total_in) * 100}")
-    else
-        cache_pct=0
+        cache_pct=$(( (cache_read * 100 + total_in / 2) / total_in ))
     fi
 
     # Tiered cache-hit warning. Stays quiet until the session has enough
@@ -478,43 +581,57 @@ main() {
         fi
     fi
 
-    duration=$(get_session_duration)
-    git_info=$(get_git_info)
+    get_git_info
+    build_progress_bar "$ctx_pct"
 
-    # Render the main line with a given cache-warning string.
+    # Render the main line with a given cache-warning string into MAIN_LINE.
     render() {
-        printf "%b➜%b  %b%s%b%s %b[%s]%b %b[↑%dk/↓%dk %b⚡%s%%%b%b]%b%s %s %b⏱ %s%b" \
+        printf -v MAIN_LINE "%s➜%s  %s%s%s%s %s[%s]%s %s[↑%dk/↓%dk %s⚡%s%%%s%s]%s%s %s %s⏱ %s%s" \
             "$C_BOLD_GREEN" "$C_RESET" \
             "$C_CYAN" "$DIR" "$C_RESET" \
-            "$git_info" \
+            "$GIT_INFO" \
             "$C_DIM" "$MODEL" "$C_RESET" \
             "$C_DIM" "$((total_in / 1000))" "$((out_tok / 1000))" \
             "$cache_color" "$cache_pct" "$C_RESET" "$C_DIM" "$C_RESET" \
             "$1" \
-            "$(build_progress_bar "$ctx_pct")" \
-            "$C_CYAN" "$duration" "$C_RESET"
+            "$PROGRESS_BAR" \
+            "$C_CYAN" "$DURATION" "$C_RESET"
     }
 
     # Width-aware degradation. Claude Code exports COLUMNS (v2.1.153+); fall back
     # to 80. Each line emits the first candidate that fits the terminal:
     #   main line  — with cache-warning text, then without (red ⚡% still signals it)
     #   usage line — full (with resets), then compact, then omitted
-    local cols=${COLUMNS:-80} candidate main_line="" usage_line=""
-    MODEL_SCOPED_LIMITS=$(load_model_scoped_limits)
+    local cols=${COLUMNS:-80} usage_line=""
+    load_model_scoped_limits
 
-    for candidate in "$(render "$cache_warn")" "$(render "")"; do
-        main_line=$candidate
-        [[ $(visible_len "$candidate") -le $cols ]] && break
-    done
-
-    for candidate in "$(build_usage_segment full)" "$(build_usage_segment compact)"; do
-        if [[ -n "$candidate" && $(visible_len "$candidate") -le $cols ]]; then
-            usage_line=$candidate
-            break
+    if [[ -n "$cache_warn" ]]; then
+        render "$cache_warn"
+        visible_len "$MAIN_LINE"
+        if [[ $VISIBLE_LEN -gt $cols ]]; then
+            render ""
         fi
-    done
+    else
+        render ""
+    fi
 
-    printf '%s' "$main_line"
+    if [[ "${SHOW_USAGE_LIMITS:-0}" == "1" && ( -n "$RL_5H" || -n "$RL_7D" || -n "$MODEL_SCOPED_LIMITS" ) ]]; then
+        build_usage_segment full
+        if [[ -n "$USAGE_SEGMENT" ]]; then
+            visible_len "$USAGE_SEGMENT"
+            if [[ $VISIBLE_LEN -le $cols ]]; then
+                usage_line=$USAGE_SEGMENT
+            else
+                build_usage_segment compact
+                if [[ -n "$USAGE_SEGMENT" ]]; then
+                    visible_len "$USAGE_SEGMENT"
+                    [[ $VISIBLE_LEN -le $cols ]] && usage_line=$USAGE_SEGMENT
+                fi
+            fi
+        fi
+    fi
+
+    printf '%s' "$MAIN_LINE"
     [[ -n "$usage_line" ]] && printf '\n%s' "$usage_line"
     return 0
 }
@@ -522,13 +639,18 @@ main() {
 # Visible (display-cell) length of a string: strip ANSI escape sequences, count
 # characters, then add 1 per double-width glyph (the emoji-ish symbols render as
 # 2 cells in most terminals but count as 1 code point). Used to fit output to the
-# terminal width.
+# terminal width. Sets VISIBLE_LEN.
 visible_len() {
-    local stripped wide
-    stripped=$(printf '%s' "$1" | sed -E $'s/\033\\[[0-9;]*m//g')
+    local stripped no_wide wide
+    stripped="${1//$'\033'\[*([0-9;])m/}"
     # Count occurrences of known 2-cell glyphs: ➜ ⏱ ⏳ ⚡ ⚠
-    wide=$(printf '%s' "$stripped" | grep -oE '➜|⏱|⏳|⚡|⚠' | grep -c .)
-    printf '%s' "$(( ${#stripped} + wide ))"
+    no_wide="${stripped//➜/}"
+    no_wide="${no_wide//⏱/}"
+    no_wide="${no_wide//⏳/}"
+    no_wide="${no_wide//⚡/}"
+    no_wide="${no_wide//⚠/}"
+    wide=$(( ${#stripped} - ${#no_wide} ))
+    VISIBLE_LEN=$(( ${#stripped} + wide ))
 }
 
 main
