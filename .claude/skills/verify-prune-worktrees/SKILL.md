@@ -5,7 +5,7 @@ description: Drive the real `bin/prune-worktrees` CLI (dotfiles repo) against a 
 
 # Verify prune-worktrees
 
-`bin/prune-worktrees` is a Python 3 CLI with no dependencies. It walks a root dir (default `~/work`), finds git repos, and classifies every linked worktree against `<remote>/HEAD`. It is a dry run unless you pass `--remove`. `install.sh` (`install_bin`) symlinks it to `~/.local/bin/prune-worktrees`.
+`bin/prune-worktrees` is a Python 3 CLI with no dependencies. It walks a root dir (default `~/work`), finds git repos, and classifies every linked worktree against `<remote>/HEAD`, then asks `gh` whether a merged PR covers any branch still unmerged there. It is a dry run unless you pass `--remove`. `install.sh` (`install_bin`) symlinks it to `~/.local/bin/prune-worktrees`.
 
 **Isolation rule:** the default root is the user's real `~/work`, and `--remove` destroys real worktrees and their merged branches there (and `--delete-branches` unmerged ones too). Verification always runs against a sandbox fixture built by the helper. The helper refuses to run unless the root carries its fixture marker. Never run `prune-worktrees` with no root argument, and never pass `--remove` with `~/work` as the root. Each run-id has its own sandbox, so parallel runs never collide.
 
@@ -23,7 +23,7 @@ $V paths    $RUN                      # print sandbox/root/evidence paths
 $V cleanup  $RUN                      # delete the sandbox, keep evidence
 ```
 
-The helper exports `GIT_CONFIG_GLOBAL=<sandbox>/gitconfig` and `GIT_CONFIG_NOSYSTEM=1`. That gives a fixed identity, `init.defaultBranch=main`, and no gpg signing, and it keeps the user's global hooks and config out of the run. Set `PRUNE_WORKTREES_BIN=~/.local/bin/prune-worktrees` to exercise the installed symlink instead of the repo file.
+The helper exports `GIT_CONFIG_GLOBAL=<sandbox>/gitconfig` and `GIT_CONFIG_NOSYSTEM=1`. That gives a fixed identity, `init.defaultBranch=main`, and no gpg signing, and it keeps the user's global hooks and config out of the run. It also exports `PRUNE_WORKTREES_GH=<sandbox>/bin/gh`, a stub that answers `gh pr list --head <branch>` from `<sandbox>/gh-prs/<branch>.json` and logs every call, so no run ever reaches GitHub. Set `PRUNE_WORKTREES_BIN=~/.local/bin/prune-worktrees` to exercise the installed symlink instead of the repo file.
 
 ## Launch
 
@@ -46,6 +46,8 @@ You are ready when it prints `fixture ready: <root>` and exits 0. The sandbox li
 | `wt/local` | app, never pushed, unmerged | ACTIVE "local-only" |
 | `wt/detached` | app, detached at an unmerged commit | ACTIVE "detached HEAD" |
 | `wt/empty` | app, `feat-empty` at an old main commit, never pushed | NO_COMMITS |
+| `wt/pr-merged` | app, pushed, merged into `release` (not main), stub PR #101 at its tip | MERGED "PR #101 merged into release" |
+| `wt/pr-ahead` | app, like pr-merged (PR #102), plus one local commit after the PR head | ACTIVE "local commits after it" |
 | `wt/locked` | app, `git worktree lock` | LOCKED |
 | `wt/noremote` | `noremote/` repo with no remote | UNKNOWN |
 | `wt/shadowed` | `nested/lib/inner/shadowed`, a repo nested inside the `nested/lib` repo | not listed |
@@ -59,7 +61,7 @@ The bare remote is at `<sandbox>/remotes/app.git`, outside the scanned root, so 
 $V doctor $RUN
 ```
 
-This is read-only and exits non-zero on any `FAIL`. It checks for python3 >= 3.9 (the script uses `str.removeprefix`), git, that the binary is executable and `--help` parses, that the fixture marker exists, that the root is not `~/work`, that the sandbox gitconfig exists, that app's `origin` is a local directory, and that `origin/HEAD` resolves. It also prints where `~/.local/bin/prune-worktrees` points and the evidence dir. Run it first, and again whenever output looks wrong.
+This is read-only and exits non-zero on any `FAIL`. It checks for python3 >= 3.9 (the script uses `str.removeprefix`), git, that the binary is executable and `--help` parses, that the fixture marker exists, that the root is not `~/work`, that the sandbox gitconfig exists, that app's `origin` is a local directory, that `origin/HEAD` resolves, and that the `gh` stub is in place. It also prints where `~/.local/bin/prune-worktrees` points and the evidence dir. Run it first, and again whenever output looks wrong.
 
 ## Drive
 
@@ -77,6 +79,7 @@ Each `run` writes the following to `~/.cache/verify-prune-worktrees/<run-id>/<la
 - `stdout.txt`: the table (STATUS, DIRTY, BRANCH, PATH, REASON)
 - `stderr.txt`: warnings plus the summary line (`N repos, M linked worktrees, K dead: R to remove, … — dry run`)
 - `exit-code.txt`
+- `gh-calls.txt`: every call the CLI made to the `gh` stub
 - `state-before.txt` / `state-after.txt`: `git worktree list --porcelain` and `git branch -a -vv` for every fixture repo, the remote's branches, and `ls wt/`
 - `state.diff`: what the run actually changed on disk
 

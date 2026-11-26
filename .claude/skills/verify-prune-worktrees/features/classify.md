@@ -11,6 +11,7 @@ Running `prune-worktrees` without `--remove` prints a table of linked worktrees 
 - `classify-missing` reports a deleted worktree dir as MISSING.
 - `classify-active` reports the three ACTIVE reasons: upstream exists, local-only, and detached HEAD.
 - `classify-no-commits` reports a never-pushed branch with no new commits as NO_COMMITS (not dead).
+- `classify-pr-merged` reports a branch whose merged PR contains its tip as MERGED, even when the PR targeted a branch other than `<remote>/HEAD` (see `pull-requests.md`).
 - `classify-locked` reports a locked worktree as LOCKED.
 - `classify-unknown` reports a repo with no remote default branch as UNKNOWN.
 - `classify-dirty` sets DIRTY=`yes` when there are uncommitted or untracked files.
@@ -28,8 +29,8 @@ Preconditions:
 
 - Fresh fixture. `$V doctor $RUN` is clean.
 
-- **Dead-only report.** Run `$V run $RUN dry-dead -- --no-fetch`. Exit `0`. stdout rows are exactly MERGED `feat-dirty-merged` (DIRTY `yes`), MERGED `feat-merged`, MISSING `feat-missing`, and SQUASHED `feat-squashed`. No ACTIVE, NO_COMMITS, LOCKED, or UNKNOWN rows. stderr ends with `3 repos, 11 linked worktrees, 4 dead: 3 to remove, 2 branches to delete, 1 skipped (dirty, use --force) — dry run, pass --remove to delete`.
-- **Full report.** Run `$V run $RUN dry-all -- --no-fetch --all`. You get 11 rows, with these REASONs:
+- **Dead-only report.** Run `$V run $RUN dry-dead -- --no-fetch`. Exit `0`. stdout rows are exactly MERGED `feat-dirty-merged` (DIRTY `yes`), MERGED `feat-merged`, MISSING `feat-missing`, MERGED `feat-pr-merged`, and SQUASHED `feat-squashed`. No ACTIVE, NO_COMMITS, LOCKED, or UNKNOWN rows. stderr ends with `3 repos, 13 linked worktrees, 5 dead: 4 to remove, 3 branches to delete, 1 skipped (dirty, use --force) — dry run, pass --remove to delete`.
+- **Full report.** Run `$V run $RUN dry-all -- --no-fetch --all`. You get 13 rows, with these REASONs:
   - `feat-active`: `upstream exists, unmerged`
   - `(<sha7>)` detached: `detached HEAD with unmerged commits`
   - `feat-local`: `local-only branch with unmerged commits`
@@ -39,6 +40,8 @@ Preconditions:
   - `feat-noremote`: UNKNOWN `no remote default branch found`
   - `feat-squashed`: `changes squash-merged into origin/main`
   - `feat-missing`: `worktree directory no longer exists`
+  - `feat-pr-merged`: MERGED `PR #101 merged into release`
+  - `feat-pr-ahead`: ACTIVE `PR #102 merged into release, local commits after it`
 - **No side effects.** In both evidence dirs, `state.diff` is empty.
 
 ## Gotchas

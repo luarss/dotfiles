@@ -22,8 +22,8 @@ Preconditions:
 - A fresh fixture where the bare remote has already lost `feat-gone` but the local `origin/feat-gone` tracking ref still exists. The fixture builds exactly this state.
 
 - **Before fetch.** Run `$V run $RUN nofetch -- --no-fetch --all`. `feat-gone` is ACTIVE `upstream exists, unmerged`. stderr has no `warning:` lines.
-- **Fetch.** Run `$V run $RUN fetch -- --all`. `feat-gone` is GONE `upstream origin/feat-gone deleted, unmerged commits`. stderr has `warning: fetch failed in .../nested/lib` and `.../noremote` (`'origin' does not appear to be a git repository`). Exit `0`. stderr says `5 dead`. In `state.diff`, the app branch list changes `[origin/feat-gone]` to `[origin/feat-gone: gone]`, and the worktrees are unchanged.
-- **Unknown remote.** Run `$V run $RUN remote-missing -- --all --remote upstream`. 9 rows are UNKNOWN `no remote default branch found`. MISSING and LOCKED keep their status because those checks run before the remote lookup. Every repo prints a fetch warning. Exit `0`.
+- **Fetch.** Run `$V run $RUN fetch -- --all`. `feat-gone` is GONE `upstream origin/feat-gone deleted, unmerged commits`. stderr has `warning: fetch failed in .../nested/lib` and `.../noremote` (`'origin' does not appear to be a git repository`). Exit `0`. stderr says `6 dead`. In `state.diff`, the app branch list changes `[origin/feat-gone]` to `[origin/feat-gone: gone]`, and the worktrees are unchanged.
+- **Unknown remote.** Run `$V run $RUN remote-missing -- --all --remote upstream`. 11 rows are UNKNOWN `no remote default branch found`. MISSING and LOCKED keep their status because those checks run before the remote lookup. `feat-pr-merged` is UNKNOWN too: the PR check runs after the remote lookup. Every repo prints a fetch warning. Exit `0`.
 
 ## Gotchas
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -22,6 +23,7 @@ def resolve_git_binary():
 
 
 GIT_BINARY = resolve_git_binary()
+GH_BINARY = os.environ.get("PRUNE_WORKTREES_GH", "gh")
 
 
 @dataclass
@@ -155,6 +157,40 @@ def is_squash_merged(repo, commit, target):
     return cherry.startswith("-")
 
 
+def merged_pull_requests(repo, branch):
+    try:
+        result = subprocess.run(
+            [GH_BINARY, "pr", "list", "--head", branch, "--state", "merged", "--json", "number,headRefOid,baseRefName"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "GH_PROMPT_DISABLED": "1", "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except FileNotFoundError:
+        return []
+    if result.returncode != 0:
+        return []
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def classify_by_pull_request(worktree):
+    pull_requests = merged_pull_requests(worktree.repo, worktree.branch)
+    for pull_request in pull_requests:
+        if is_ancestor(worktree.repo, worktree.branch, pull_request["headRefOid"]):
+            worktree.status = "MERGED"
+            worktree.reason = f"PR #{pull_request['number']} merged into {pull_request['baseRefName']}"
+            return True
+    if pull_requests:
+        latest = pull_requests[0]
+        worktree.status = "ACTIVE"
+        worktree.reason = f"PR #{latest['number']} merged into {latest['baseRefName']}, local commits after it"
+        return True
+    return False
+
+
 def upstream_states(repo):
     output = git(
         repo, "for-each-ref", "--format=%(refname:short)|%(upstream)|%(upstream:track)", "refs/heads"
@@ -170,7 +206,7 @@ def is_dirty(path):
     return bool(git(path, "status", "--porcelain", "--untracked-files=normal").stdout.strip())
 
 
-def classify(worktree, target_ref):
+def classify(worktree, target_ref, check_pull_requests):
     repo = worktree.repo
     if worktree.prunable or not os.path.isdir(worktree.path):
         worktree.status, worktree.reason = "MISSING", "worktree directory no longer exists"
@@ -193,6 +229,8 @@ def classify(worktree, target_ref):
             worktree.status, worktree.reason = "MERGED", f"tip is contained in {target_name}"
     elif is_squash_merged(repo, commit, target_ref):
         worktree.status, worktree.reason = "SQUASHED", f"changes squash-merged into {target_name}"
+    elif worktree.branch and check_pull_requests and classify_by_pull_request(worktree):
+        return
     elif upstream_gone:
         worktree.status, worktree.reason = "GONE", f"upstream {upstream.removeprefix('refs/remotes/')} deleted, unmerged commits"
     elif not worktree.branch:
@@ -312,6 +350,7 @@ def parse_args():
     parser.add_argument("root", nargs="?", default=os.path.expanduser("~/work"))
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--no-fetch", action="store_true", help="skip git fetch --prune")
+    parser.add_argument("--no-gh", action="store_true", help="skip checking GitHub for merged pull requests")
     parser.add_argument("--all", action="store_true", help="also list ACTIVE / NO_COMMITS / LOCKED worktrees")
     parser.add_argument("--remove", action="store_true", help="remove dead worktrees (default is dry run)")
     branch_policy = parser.add_mutually_exclusive_group()
@@ -343,7 +382,7 @@ def main():
             jobs.extend((worktree, target_ref) for worktree in repo_worktrees)
             for warning in warnings:
                 print(f"warning: {warning}", file=sys.stderr)
-        run_with_progress(pool, lambda job: classify(*job), jobs, "Classifying worktrees", show_progress)
+        run_with_progress(pool, lambda job: classify(*job, not args.no_gh), jobs, "Classifying worktrees", show_progress)
 
     worktrees = sorted((worktree for worktree, _ in jobs), key=lambda w: (w.repo, w.path))
 

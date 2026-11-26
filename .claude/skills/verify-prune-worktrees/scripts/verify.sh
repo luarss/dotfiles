@@ -33,10 +33,13 @@ SANDBOX="$SANDBOX_BASE/$RUN_ID"
 ROOT="$SANDBOX/root"
 REMOTES="$SANDBOX/remotes"
 EVIDENCE="$EVIDENCE_BASE/$RUN_ID"
+GH_PULL_REQUESTS="$SANDBOX/gh-prs"
+GH_CALLS="$SANDBOX/gh-calls.log"
 
 export GIT_CONFIG_GLOBAL="$SANDBOX/gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_TERMINAL_PROMPT=0
+export PRUNE_WORKTREES_GH="$SANDBOX/bin/gh"
 
 commit() {
   local repo="$1" message="$2"
@@ -44,6 +47,32 @@ commit() {
   echo "$message" >> "$repo/$file"
   git -C "$repo" add "$file"
   git -C "$repo" commit -q -m "$message"
+}
+
+write_gh_stub() {
+  mkdir -p "$SANDBOX/bin" "$GH_PULL_REQUESTS"
+  cat > "$PRUNE_WORKTREES_GH" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+echo "\$PWD \$*" >> "$GH_CALLS"
+branch=""
+while [ \$# -gt 1 ]; do
+  [ "\$1" = --head ] && branch="\$2"
+  shift
+done
+if [ -n "\$branch" ] && [ -f "$GH_PULL_REQUESTS/\$branch.json" ]; then
+  cat "$GH_PULL_REQUESTS/\$branch.json"
+else
+  echo "[]"
+fi
+EOF
+  chmod +x "$PRUNE_WORKTREES_GH"
+  : > "$GH_CALLS"
+}
+
+merged_pull_request() {
+  local branch="$1" number="$2" head="$3" base="$4"
+  printf '[{"number":%s,"headRefOid":"%s","baseRefName":"%s"}]\n' "$number" "$head" "$base" > "$GH_PULL_REQUESTS/$branch.json"
 }
 
 build_fixture() {
@@ -64,6 +93,7 @@ build_fixture() {
 	detachedHead = false
 EOF
   touch "$ROOT/$MARKER"
+  write_gh_stub
 
   git init -q --bare "$REMOTES/app.git"
   git init -q "$ROOT/app"
@@ -80,6 +110,21 @@ EOF
     [ "$name" = squashed ] && commit "$app" "$name work 2"
     git -C "$app" push -q -u origin "feat-$name"
   done
+  git -C "$app" switch -q -c release main
+  git -C "$app" push -q -u origin release
+  for name in pr-merged pr-ahead; do
+    git -C "$app" switch -q -c "feat-$name" main
+    commit "$app" "$name work 1"
+    git -C "$app" push -q -u origin "feat-$name"
+  done
+  git -C "$app" switch -q release
+  git -C "$app" merge -q --no-ff -m "merge feat-pr-merged" feat-pr-merged
+  git -C "$app" merge -q --no-ff -m "merge feat-pr-ahead" feat-pr-ahead
+  git -C "$app" push -q origin release
+  merged_pull_request feat-pr-merged 101 "$(git -C "$app" rev-parse feat-pr-merged)" release
+  merged_pull_request feat-pr-ahead 102 "$(git -C "$app" rev-parse feat-pr-ahead)" release
+  git -C "$app" switch -q feat-pr-ahead
+  commit "$app" "pr-ahead work after merge"
   git -C "$app" switch -q -c feat-local main
   commit "$app" "local-only work"
   git -C "$app" switch -q -c feat-detached main
@@ -100,7 +145,7 @@ EOF
   git -C "$app" push -q origin main
 
   mkdir -p "$ROOT/wt"
-  for name in merged squashed gone active dirty-merged local empty locked missing; do
+  for name in merged squashed gone active dirty-merged local empty locked missing pr-merged pr-ahead; do
     git -C "$app" worktree add -q "$ROOT/wt/$name" "feat-$name"
   done
   git -C "$app" worktree add -q --detach "$ROOT/wt/detached" "$detached_sha"
@@ -169,11 +214,13 @@ run_tool() {
   printf '%q ' "$PRUNE_BIN" "$ROOT" "$@" > "$dir/command.txt"
   echo >> "$dir/command.txt"
   snapshot "$dir/state-before.txt"
+  : > "$GH_CALLS"
   local exit_code=0
   "$PRUNE_BIN" "$ROOT" "$@" > "$dir/stdout.txt" 2> "$dir/stderr.txt" || exit_code=$?
   echo "$exit_code" > "$dir/exit-code.txt"
   snapshot "$dir/state-after.txt"
   diff -u "$dir/state-before.txt" "$dir/state-after.txt" > "$dir/state.diff" || true
+  cp "$GH_CALLS" "$dir/gh-calls.txt"
   echo "\$ $(cat "$dir/command.txt")"
   cat "$dir/stdout.txt"
   cat "$dir/stderr.txt" >&2
@@ -201,6 +248,7 @@ doctor() {
   check "sandbox gitconfig isolates identity" test -f "$GIT_CONFIG_GLOBAL"
   check "app origin is a local path (fetch stays offline)" test -d "$(git -C "$ROOT/app" remote get-url origin 2>/dev/null || echo /nonexistent)"
   check "app origin/HEAD resolves" git -C "$ROOT/app" rev-parse --verify origin/HEAD
+  check "gh stub in place (no real GitHub calls): $PRUNE_WORKTREES_GH" test -x "$PRUNE_WORKTREES_GH"
   if [ -L "$HOME/.local/bin/prune-worktrees" ]; then
     echo "INFO  ~/.local/bin/prune-worktrees -> $(readlink "$HOME/.local/bin/prune-worktrees")"
   else

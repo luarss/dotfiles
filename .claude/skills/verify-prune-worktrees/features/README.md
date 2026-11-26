@@ -21,6 +21,7 @@ This directory is the maintained source for verifying what `bin/prune-worktrees`
 - Cite the evidence dir `~/.cache/verify-prune-worktrees/<run>/<label>/` for every claim.
 - Mutation proof = the REASON action text (`removed`, `pruned`, `branch deleted`, `skipped: dirty`) plus the matching lines in `state.diff`.
 - Dry-run proof includes an empty `state.diff`.
+- `gh` proof is `gh-calls.txt` in the evidence dir: one line per stub call (`<cwd> <argv>`). It is empty when `--no-gh` is passed.
 - If a fixture state a recipe needs is missing, report the failure and the unmet precondition. Don't edit the recipe to make it pass.
 
 ## Feature entry contract
@@ -30,6 +31,7 @@ Each feature file has an H1, a one-paragraph description, and then exactly four 
 ## Features
 
 - [Classify worktrees](./classify.md): the dry-run report, every status, `--all`, the dirty flag, and the summary line.
+- [Merged pull requests](./pull-requests.md): the `gh` lookup that marks a branch MERGED when its PR merged into any base, the local-commits guard, and `--no-gh`.
 - [Remove dead worktrees](./remove.md): `--remove`, the dirty skip, `--force`, and `--delete-branches`.
 - [Fetch and remote selection](./fetch.md): `fetch --prune` turning ACTIVE into GONE, `--no-fetch`, `--remote`, and fetch warnings.
 - [Repo discovery](./discovery.md): the root argument, skipped dirs, nested repos, and `--jobs`.

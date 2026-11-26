@@ -22,7 +22,7 @@ Preconditions:
 
 - A fresh fixture with `node_modules/skipped`, `nested/lib/inner/shadowed`, and `noremote` present, each with a linked worktree under `wt/`.
 
-- **Repo count.** Run `$V run $RUN discover -- --no-fetch --all`. stderr says `3 repos, 11 linked worktrees` (the repos are app, nested/lib, and noremote). No row has BRANCH `feat-skipped` or `feat-shadowed`, even though `wt/skipped` and `wt/shadowed` exist (check `state-before.txt`).
+- **Repo count.** Run `$V run $RUN discover -- --no-fetch --all`. stderr says `3 repos, 13 linked worktrees` (the repos are app, nested/lib, and noremote). No row has BRANCH `feat-skipped` or `feat-shadowed`, even though `wt/skipped` and `wt/shadowed` exist (check `state-before.txt`).
 - **Serial run.** Run `$V run $RUN discover-serial -- --no-fetch --all --jobs 1`. `stdout.txt` is byte-identical to `discover/stdout.txt` (`diff` them).
 - **Subdirectory root.** Running against a subtree needs the helper's root, so call the binary directly with the sandbox env exported: `GIT_CONFIG_GLOBAL=<sandbox>/gitconfig bin/prune-worktrees "<root>/noremote" --no-fetch --all`. You get `1 repos, 1 linked worktrees`. Save its stdout and stderr next to the other evidence by hand.
 
