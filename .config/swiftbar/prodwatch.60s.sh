@@ -1,12 +1,66 @@
 #!/bin/bash
 # SwiftBar productivity widget: today's git activity + Claude/Antigravity usage.
 # Refreshes every 60s (filename ".60s."). Deliberately lightweight: one git
-# pass per repo, one node call, active repos only.
+# pass per repo, one jq call, active repos only.
 export PATH="$PATH:/opt/homebrew/bin:/usr/bin:/bin:$HOME/.local/bin"
+
+PARSE_USAGE_JQ='
+def fmt2:
+  ((. // 0 | tonumber) * 100 | round) as $n
+  | (if $n < 0 then "-" else "" end) as $sign
+  | (($n | fabs) | tostring) as $s
+  | $sign + if ($s | length) == 1 then "0.0" + $s
+            elif ($s | length) == 2 then "0." + $s
+            else $s[:-2] + "." + $s[-2:] end;
+def fmtTok:
+  (. // 0 | tonumber) as $n
+  | if $n >= 1000000 then
+      (($n / 100000 | round | tostring) as $s | $s[:-1] + "." + $s[-1:] + "M")
+    elif $n >= 1000 then
+      (($n / 1000 | round | tostring) + "k")
+    else ($n | tostring) end;
+def cleanModels:
+  [(. // [])[]
+    | sub("^(claude|gemini)-"; "")
+    | sub("-[0-9]{8}$"; "")
+    | select(length > 0)]
+  | reduce .[] as $m ([]; if index($m) then . else . + [$m] end)
+  | if length == 0 then "-" else join(",") end;
+((.daily // [])[-1]) as $t
+| if $t == null then ["0.00", "0", "0.00", "0", "-", "0.00", "0", "-"]
+  else
+    ($t.agents | if type == "array" then . else [] end) as $agents
+    | ($agents | map(select((.agent // "" | ascii_downcase) == "claude")) | .[0]) as $c0
+    | ($agents | map(select((.agent // "" | ascii_downcase) == "antigravity")) | .[0]) as $a0
+    | (if $c0 == null and $a0 == null and ($t.metadata.agents? | type == "array") then
+         if ($t.metadata.agents | index("claude")) and ($t.metadata.agents | index("antigravity") | not)
+         then $t else null end
+       else $c0 end) as $c
+    | (if $c0 == null and $a0 == null and ($t.metadata.agents? | type == "array") then
+         if ($t.metadata.agents | index("antigravity")) and ($t.metadata.agents | index("claude") | not)
+         then $t else null end
+       else $a0 end) as $a
+    | [($t.totalCost | fmt2), ($t.totalTokens | fmtTok),
+       ($c.totalCost | fmt2), ($c.totalTokens | fmtTok), ($c.modelsUsed | cleanModels),
+       ($a.totalCost | fmt2), ($a.totalTokens | fmtTok), ($a.modelsUsed | cleanModels)]
+  end
+| @tsv'
+
+if [ "${1:-}" = "--parse-usage" ]; then
+  parsed="$(jq -r "$PARSE_USAGE_JQ" 2>/dev/null)" || parsed=""
+  if [ -n "$parsed" ]; then
+    printf '%s\n' "$parsed"
+  else
+    printf '0.00\t0\t0.00\t0\t-\t0.00\t0\t-\n'
+  fi
+  exit 0
+fi
+
+read -r TODAY_DASH TODAY_COMPACT NOW_TIME NOW_HM NOW_TZ NOW_EPOCH < <(date '+%Y-%m-%d %Y%m%d %H:%M:%S %H:%M %z %s')
 
 WORK="$HOME/work"
 PROJECTS="$HOME/projects"
-SINCE="$(date +%Y-%m-%dT00:00:00)"
+SINCE="${TODAY_DASH}T00:00:00"
 IDENTITY_FILE="${PRODWATCH_IDENTITY_FILE:-$HOME/.config/prodwatch/identity}"
 [ -f "$IDENTITY_FILE" ] && . "$IDENTITY_FILE"
 # --author is a regex; \| alternation lets one scan match several identities.
@@ -17,16 +71,21 @@ GITHUB_USER="${PRODWATCH_GITHUB_USER:-luarss}"
 
 CACHE_DIR="${PRODWATCH_CACHE_DIR:-$HOME/.cache/prodwatch}"
 CCUSAGE_TTL="${PRODWATCH_CCUSAGE_TTL:-600}"
-USAGE_CACHE="$CACHE_DIR/ccusage-$(date +%Y%m%d).json"
+USAGE_CACHE="$CACHE_DIR/ccusage-${TODAY_COMPACT}.json"
 USAGE_LOCK="$CACHE_DIR/ccusage.lock"
 USAGE_WAIT="${PRODWATCH_USAGE_WAIT:-20}"
+USAGE_POLL="${PRODWATCH_USAGE_POLL:-0.2}"
 USAGE_LOCK_STALE="${PRODWATCH_USAGE_LOCK_STALE:-900}"
 EXTRA_CLAUDE_DIRS="${PRODWATCH_EXTRA_CLAUDE_DIRS:-$HOME/.claude-alt-profile}"
 
 cache_age_seconds() {
   local modified
-  modified="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)" || return 1
-  echo $(( $(date +%s) - modified ))
+  if [[ "$OSTYPE" == darwin* ]]; then
+    modified="$(stat -f %m "$1" 2>/dev/null)" || return 1
+  else
+    modified="$(stat -c %Y "$1" 2>/dev/null)" || return 1
+  fi
+  echo $(( NOW_EPOCH - modified ))
 }
 
 usage_cache_is_fresh() {
@@ -67,7 +126,7 @@ merge_extra_claude_usage() {
     [ -d "$config_dir/projects" ] || continue
     extra="$(mktemp "$CACHE_DIR/ccusage-extra.XXXXXX")"
     merged="$(mktemp "$CACHE_DIR/ccusage-merged.XXXXXX")"
-    if ! CLAUDE_CONFIG_DIR="$config_dir" ccusage claude daily --json --since "$(date +%Y%m%d)" >"$extra" 2>/dev/null \
+    if ! CLAUDE_CONFIG_DIR="$config_dir" ccusage claude daily --json --since "$TODAY_COMPACT" >"$extra" 2>/dev/null \
       || ! jq --slurpfile extra "$extra" "$MERGE_CLAUDE_USAGE" "$report" >"$merged" 2>/dev/null; then
       rm -f "$extra" "$merged"
       return 1
@@ -78,13 +137,15 @@ merge_extra_claude_usage() {
 }
 
 refresh_usage_cache() {
-  local fresh
+  local fresh f
   mkdir -p "$CACHE_DIR"
   fresh="$(mktemp "$CACHE_DIR/ccusage.XXXXXX")"
-  if ccusage daily --json --by-agent --since "$(date +%Y%m%d)" >"$fresh" 2>/dev/null && [ -s "$fresh" ] \
+  if ccusage daily --json --by-agent --since "$TODAY_COMPACT" >"$fresh" 2>/dev/null && [ -s "$fresh" ] \
     && merge_extra_claude_usage "$fresh" && usage_is_fully_priced "$fresh"; then
     mv -f "$fresh" "$USAGE_CACHE"
-    find "$CACHE_DIR" -name 'ccusage-*.json' ! -name "$(basename "$USAGE_CACHE")" -delete 2>/dev/null
+    for f in "$CACHE_DIR"/ccusage-*.json; do
+      [ "$f" = "$USAGE_CACHE" ] || rm -f "$f"
+    done
   else
     rm -f "$fresh"
   fi
@@ -120,24 +181,23 @@ start_detached_usage_refresh() {
 wait_for_usage_refresh() {
   local deadline=$((SECONDS + USAGE_WAIT))
   while [ -d "$USAGE_LOCK" ] && [ "$SECONDS" -lt "$deadline" ]; do
-    sleep 0.2
+    sleep "$USAGE_POLL"
   done
 }
 
 # ccusage can outlast a 60s refresh, so it runs in its own session where
 # SwiftBar killing this run can't take it down; we wait briefly, then render
 # whatever cache exists.
-USAGE_RAW="$(mktemp)"
-(
-  if ! usage_cache_is_fresh; then
+USAGE_PID=""
+if ! usage_cache_is_fresh; then
+  (
     start_detached_usage_refresh
     wait_for_usage_refresh
-  fi
-  cat "$USAGE_CACHE" >"$USAGE_RAW" 2>/dev/null
-) &
-USAGE_PID=$!
+  ) &
+  USAGE_PID=$!
+fi
 
-GH_CACHE="$CACHE_DIR/github-$(date +%Y%m%d).json"
+GH_CACHE="$CACHE_DIR/github-${TODAY_COMPACT}.json"
 GH_TTL="${PRODWATCH_GH_TTL:-300}"
 GH_MIN_REMAINING="${PRODWATCH_GH_MIN_REMAINING:-500}"
 GITHUB_QUERY='
@@ -171,30 +231,35 @@ github_budget_is_low() {
 }
 
 refresh_github_cache() {
-  local fresh midnight now
+  local out fresh tz_iso midnight now f
   command -v gh >/dev/null 2>&1 || return
-  mkdir -p "$CACHE_DIR"
-  midnight="$(date +%Y-%m-%dT00:00:00%z | sed 's/\(..\)$/:\1/')"
-  now="$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\(..\)$/:\1/')"
-  fresh="$(mktemp "$CACHE_DIR/github.XXXXXX")"
-  if gh api graphql -f query="$GITHUB_QUERY" -f from="$midnight" -f to="$now" \
+  tz_iso="${NOW_TZ%??}:${NOW_TZ#???}"
+  midnight="${TODAY_DASH}T00:00:00${tz_iso}"
+  now="${TODAY_DASH}T${NOW_TIME}${tz_iso}"
+  out="$(gh api graphql -f query="$GITHUB_QUERY" -f from="$midnight" -f to="$now" \
       -f prsOpened="is:pr author:@me created:>=$midnight" \
       -f authorOpened="is:issue author:@me created:>=$midnight" \
       -f assigneeOpened="is:issue assignee:@me created:>=$midnight" \
       -f authorClosed="is:issue author:@me closed:>=$midnight" \
-      -f assigneeClosed="is:issue assignee:@me closed:>=$midnight" >"$fresh" 2>/dev/null \
-    && jq -e '.data.viewer.contributionsCollection' "$fresh" >/dev/null 2>&1; then
-    mv -f "$fresh" "$GH_CACHE"
-    find "$CACHE_DIR" -name 'github-*.json' ! -name "$(basename "$GH_CACHE")" -delete 2>/dev/null
-  else
-    rm -f "$fresh"
-  fi
+      -f assigneeClosed="is:issue assignee:@me closed:>=$midnight" 2>/dev/null)" || return
+  [ -n "$out" ] || return
+  jq -e '.data.viewer.contributionsCollection' <<<"$out" >/dev/null 2>&1 || return
+  mkdir -p "$CACHE_DIR"
+  fresh="$(mktemp "$CACHE_DIR/github.XXXXXX")"
+  printf '%s\n' "$out" >"$fresh"
+  mv -f "$fresh" "$GH_CACHE"
+  for f in "$CACHE_DIR"/github-*.json; do
+    [ "$f" = "$GH_CACHE" ] || rm -f "$f"
+  done
 }
 
-(
-  github_cache_is_fresh || github_budget_is_low || refresh_github_cache
-) &
-GH_PID=$!
+GH_PID=""
+if ! github_cache_is_fresh; then
+  (
+    github_budget_is_low || refresh_github_cache
+  ) &
+  GH_PID=$!
+fi
 
 TEMP_RAW="$(mktemp)"
 ( python3 - >"$TEMP_RAW" 2>/dev/null <<'PY'
@@ -266,9 +331,34 @@ TEMP_PID=$!
 
 DISK_RAW="$(mktemp)"
 (
-  smart_status="$(diskutil info disk0 2>/dev/null | awk -F': *' '/SMART Status/{print $2; exit}')"
-  read -r disk_free disk_used_percent < <(df -h /System/Volumes/Data 2>/dev/null | awk 'NR==2{print $4, $5}')
-  printf '%s\t%s\t%s\n' "$smart_status" "$disk_free" "${disk_used_percent%\%}" >"$DISK_RAW"
+  smart_status=""
+  while IFS= read -r line; do
+    case "$line" in
+      *"SMART Status:"*)
+        smart_status="${line#*SMART Status:}"
+        smart_status="${smart_status#"${smart_status%%[![:space:]]*}"}"
+        break ;;
+    esac
+  done < <(diskutil info disk0 2>/dev/null)
+  disk_free="" disk_used_percent=""
+  {
+    read -r _
+    read -r _ _ _ disk_free disk_used_percent _
+  } < <(df -h /System/Volumes/Data 2>/dev/null)
+  cycles=0 design=0 nominal=0 failure=0
+  while IFS= read -r line; do
+    case "$line" in
+      *' "CycleCount" = '*) cycles="${line##*= }" ;;
+      *' "DesignCapacity" = '*) design="${line##*= }" ;;
+      *' "NominalChargeCapacity" = '*) nominal="${line##*= }" ;;
+      *' "PermanentFailureStatus" = '*) failure="${line##*= }" ;;
+    esac
+  done < <(ioreg -rn AppleSmartBattery 2>/dev/null)
+  battery_info=""
+  if [ "$design" -gt 0 ] 2>/dev/null && [ "$nominal" -gt 0 ] 2>/dev/null; then
+    battery_info="$(( nominal * 100 / design ))"$'\t'"$cycles"$'\t'"$failure"
+  fi
+  printf '%s\t%s\t%s\n%s\n' "$smart_status" "$disk_free" "${disk_used_percent%\%}" "$battery_info" >"$DISK_RAW"
 ) &
 DISK_PID=$!
 
@@ -296,87 +386,46 @@ proj_commits=$g_commits; proj_add=$g_add; proj_del=$g_del; proj_rows=$g_rows
 
 total_commits=$((work_commits + proj_commits))
 
-# --- Claude & Antigravity usage today: one node call returns tab-delimited metrics ---
-wait "$USAGE_PID" 2>/dev/null
-read -r tot_cost tot_htok c_cost c_htok c_models a_cost a_htok a_models < <(node -e '
-let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-  try{
-    const json=JSON.parse(s);
-    const t=json.daily?.slice(-1)[0];
-    if(!t){console.log("0.00\t0\t0.00\t0\t-\t0.00\t0\t-");return;}
-    const fmtTok = n => {
-      n = Number(n) || 0;
-      return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "k" : "" + n;
-    };
-    const cleanModels = list => {
-      const cleaned = (list || [])
-        .map(x => x.replace(/^(claude|gemini)-/, "").replace(/-\d{8}$/, ""))
-        .filter(Boolean);
-      return [...new Set(cleaned)].join(",") || "-";
-    };
-
-    const agents = Array.isArray(t.agents) ? t.agents : [];
-    let c = agents.find(x => x.agent === "claude" || x.agent?.toLowerCase() === "claude");
-    let a = agents.find(x => x.agent === "antigravity" || x.agent?.toLowerCase() === "antigravity");
-
-    if (!c && !a && t.metadata?.agents) {
-      if (t.metadata.agents.includes("claude") && !t.metadata.agents.includes("antigravity")) c = t;
-      else if (t.metadata.agents.includes("antigravity") && !t.metadata.agents.includes("claude")) a = t;
-    }
-
-    const cCost = Number(c?.totalCost || 0).toFixed(2);
-    const cTok = fmtTok(c?.totalTokens);
-    const cModels = cleanModels(c?.modelsUsed);
-
-    const aCost = Number(a?.totalCost || 0).toFixed(2);
-    const aTok = fmtTok(a?.totalTokens);
-    const aModels = cleanModels(a?.modelsUsed);
-
-    const totCost = Number(t.totalCost || 0).toFixed(2);
-    const totTok = fmtTok(t.totalTokens);
-
-    console.log([totCost, totTok, cCost, cTok, cModels, aCost, aTok, aModels].join("\t"));
-  }catch(e){console.log("0.00\t0\t0.00\t0\t-\t0.00\t0\t-");}
-});' 2>/dev/null < "$USAGE_RAW")
-rm -f "$USAGE_RAW"
+# --- Claude & Antigravity usage today: one jq call returns tab-delimited metrics ---
+[ -n "$USAGE_PID" ] && wait "$USAGE_PID" 2>/dev/null
+if [ -s "$USAGE_CACHE" ]; then
+  IFS=$'\t' read -r tot_cost tot_htok c_cost c_htok c_models a_cost a_htok a_models < <(jq -r "$PARSE_USAGE_JQ" "$USAGE_CACHE" 2>/dev/null)
+fi
 tot_cost="${tot_cost:-0.00}"; tot_htok="${tot_htok:-0}"
 c_cost="${c_cost:-0.00}"; c_htok="${c_htok:-0}"; c_models="${c_models:--}"
 a_cost="${a_cost:-0.00}"; a_htok="${a_htok:-0}"; a_models="${a_models:--}"
 
 # --- GitHub activity today ---
-wait "$GH_PID" 2>/dev/null
-IFS=$'\t' read -r gh_contributions gh_prs gh_opened gh_closed < <(jq -r --arg today "$(date +%Y-%m-%d)" '
-  .data
-  | [([.viewer.contributionsCollection.contributionCalendar.weeks[].contributionDays[]
-       | select(.date == $today) | .contributionCount] | add // 0),
-     .prsOpened.issueCount,
-     ([.authorOpened, .assigneeOpened] | map(.nodes[].url) | unique | length),
-     ([.authorClosed, .assigneeClosed] | map(.nodes[].url) | unique | length)]
-  | @tsv' "$GH_CACHE" 2>/dev/null)
+[ -n "$GH_PID" ] && wait "$GH_PID" 2>/dev/null
+if [ -s "$GH_CACHE" ]; then
+  IFS=$'\t' read -r gh_contributions gh_prs gh_opened gh_closed < <(jq -r --arg today "$TODAY_DASH" '
+    .data
+    | [([.viewer.contributionsCollection.contributionCalendar.weeks[].contributionDays[]
+         | select(.date == $today) | .contributionCount] | add // 0),
+       .prsOpened.issueCount,
+       ([.authorOpened, .assigneeOpened] | map(.nodes[].url) | unique | length),
+       ([.authorClosed, .assigneeClosed] | map(.nodes[].url) | unique | length)]
+    | @tsv' "$GH_CACHE" 2>/dev/null)
+fi
 gh_opened="${gh_opened:-0}"; gh_closed="${gh_closed:-0}"
 commit_title="${gh_contributions:-$total_commits}"
 [ -n "$gh_prs" ] && commit_title+=" · PR ${gh_prs}"
 
 wait "$TEMP_PID" 2>/dev/null
 IFS=$'\t' read -r soc_avg soc_max < "$TEMP_RAW" 2>/dev/null
-rm -f "$TEMP_RAW"
 
 wait "$DISK_PID" 2>/dev/null
-IFS=$'\t' read -r smart_status disk_free disk_used_percent < "$DISK_RAW" 2>/dev/null
-rm -f "$DISK_RAW"
+{
+  IFS=$'\t' read -r smart_status disk_free disk_used_percent
+  IFS=$'\t' read -r battery_health battery_cycles battery_failure
+} < "$DISK_RAW" 2>/dev/null
+rm -f "$TEMP_RAW" "$DISK_RAW"
 disk_alert=""
 case "$smart_status" in
   ""|Verified|"Not Supported") ;;
   *) disk_alert=1 ;;
 esac
 [ "${disk_used_percent:-0}" -gt 90 ] 2>/dev/null && disk_alert=1
-battery_info="$(ioreg -rn AppleSmartBattery 2>/dev/null | awk '
-  /^ +"CycleCount" = /{cycles=$3}
-  /^ +"DesignCapacity" = /{design=$3}
-  /^ +"NominalChargeCapacity" = /{nominal=$3}
-  /^ +"PermanentFailureStatus" = /{failure=$3}
-  END{if (design > 0 && nominal > 0) printf "%d %d %d", nominal * 100 / design, cycles, failure}')"
-read -r battery_health battery_cycles battery_failure <<<"$battery_info"
 battery_alert=""
 if [ -n "$battery_health" ]; then
   [ "$battery_health" -lt 80 ] && battery_alert=1
@@ -445,5 +494,5 @@ if [ -n "$battery_health" ]; then
   echo "Battery · ${battery_health}% health · ${battery_cycles} cycles | ${battery_style}"
 fi
 echo "---"
-echo "Updated $(date +%H:%M) | size=11 color=gray"
+echo "Updated ${NOW_HM} | size=11 color=gray"
 echo "Refresh | refresh=true"
