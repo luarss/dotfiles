@@ -18,6 +18,9 @@ GITHUB_USER="${PRODWATCH_GITHUB_USER:-luarss}"
 CACHE_DIR="${PRODWATCH_CACHE_DIR:-$HOME/.cache/prodwatch}"
 CCUSAGE_TTL="${PRODWATCH_CCUSAGE_TTL:-600}"
 USAGE_CACHE="$CACHE_DIR/ccusage-$(date +%Y%m%d).json"
+USAGE_LOCK="$CACHE_DIR/ccusage.lock"
+USAGE_WAIT="${PRODWATCH_USAGE_WAIT:-20}"
+USAGE_LOCK_STALE="${PRODWATCH_USAGE_LOCK_STALE:-900}"
 EXTRA_CLAUDE_DIRS="${PRODWATCH_EXTRA_CLAUDE_DIRS:-$HOME/.claude-alt-profile}"
 
 cache_age_seconds() {
@@ -35,6 +38,7 @@ usage_cache_is_fresh() {
 
 usage_is_fully_priced() {
   jq -e '[.daily[]?.agents[]?.modelBreakdowns[]?
+          | select((.modelName // "") | startswith("model_placeholder_") | not)
           | select((.inputTokens + .outputTokens + .cacheCreationTokens + .cacheReadTokens) > 0 and .cost == 0)]
          | length == 0' "$1" >/dev/null 2>&1
 }
@@ -86,10 +90,49 @@ refresh_usage_cache() {
   fi
 }
 
-# Kick off ccusage (the slow half) in the background so it overlaps the git scan.
+acquire_usage_lock() {
+  local age
+  mkdir -p "$CACHE_DIR"
+  if [ -d "$USAGE_LOCK" ]; then
+    age="$(cache_age_seconds "$USAGE_LOCK")" || age=0
+    [ "$age" -ge "$USAGE_LOCK_STALE" ] && rmdir "$USAGE_LOCK" 2>/dev/null
+  fi
+  mkdir "$USAGE_LOCK" 2>/dev/null
+}
+
+release_usage_lock() {
+  rm -f "$CACHE_DIR"/ccusage.?????? "$CACHE_DIR"/ccusage-extra.?????? "$CACHE_DIR"/ccusage-merged.??????
+  rmdir "$USAGE_LOCK" 2>/dev/null
+}
+
+if [ "${1:-}" = "--refresh-usage-cache" ]; then
+  trap release_usage_lock EXIT
+  refresh_usage_cache
+  exit 0
+fi
+
+start_detached_usage_refresh() {
+  acquire_usage_lock || return 0
+  perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' bash "${BASH_SOURCE[0]}" --refresh-usage-cache \
+    </dev/null >/dev/null 2>&1 &
+}
+
+wait_for_usage_refresh() {
+  local deadline=$((SECONDS + USAGE_WAIT))
+  while [ -d "$USAGE_LOCK" ] && [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 0.2
+  done
+}
+
+# ccusage can outlast a 60s refresh, so it runs in its own session where
+# SwiftBar killing this run can't take it down; we wait briefly, then render
+# whatever cache exists.
 USAGE_RAW="$(mktemp)"
 (
-  usage_cache_is_fresh || refresh_usage_cache
+  if ! usage_cache_is_fresh; then
+    start_detached_usage_refresh
+    wait_for_usage_refresh
+  fi
   cat "$USAGE_CACHE" >"$USAGE_RAW" 2>/dev/null
 ) &
 USAGE_PID=$!

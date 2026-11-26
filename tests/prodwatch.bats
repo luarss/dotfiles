@@ -530,6 +530,51 @@ EOF
   [[ "$output" =~ "\$1.25 · 0 | font=Menlo size=13" ]]
 }
 
+@test "prodwatch accepts reports whose only unpriced model is a ccusage placeholder" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  cat > "$stub_dir/ccusage" <<'EOF'
+#!/bin/bash
+echo '{"daily":[{"agent":"all","totalCost":0.32,"totalTokens":3000000,"agents":[{"agent":"antigravity","totalCost":0.32,"totalTokens":3000000,"modelsUsed":["gemini-3.6-flash-low","model_placeholder_m437"],"modelBreakdowns":[{"modelName":"gemini-3.6-flash-low","inputTokens":1000,"outputTokens":0,"cacheCreationTokens":0,"cacheReadTokens":0,"cost":0.32},{"modelName":"model_placeholder_m437","inputTokens":2000,"outputTokens":0,"cacheCreationTokens":0,"cacheReadTokens":0,"cost":0}]}]}]}'
+EOF
+  chmod +x "$stub_dir/ccusage"
+
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Antigravity today · \$0.32 · 3.0M tok" ]]
+}
+
+@test "prodwatch renders without waiting for a slow ccusage and caches its result later" {
+  local stub_dir="$TEST_DIR/bin"
+  mkdir -p "$stub_dir" "$TEST_DIR/home/work" "$TEST_DIR/home/projects"
+  stub_quiet_sources "$stub_dir"
+  stub_disk "$stub_dir" "" "" ""
+  cat > "$stub_dir/ccusage" <<'EOF'
+#!/bin/bash
+sleep 3
+echo '{"daily":[{"agent":"all","totalCost":4.5,"totalTokens":0,"agents":[]}]}'
+EOF
+  chmod +x "$stub_dir/ccusage"
+
+  SECONDS=0
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" PRODWATCH_USAGE_WAIT=1 bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [ "$SECONDS" -lt 3 ]
+  [[ ! "$output" =~ "\$4.50" ]]
+
+  local waited=0
+  while [ -d "$TEST_DIR/home/.cache/prodwatch/ccusage.lock" ] && [ "$waited" -lt 50 ]; do
+    sleep 0.2
+    waited=$((waited + 1))
+  done
+  run env HOME="$TEST_DIR/home" PATH="$stub_dir:$PATH" bash "$PRODWATCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "\$4.50 · 0 | font=Menlo size=13" ]]
+  [ -z "$(find "$TEST_DIR/home/.cache/prodwatch" -name 'ccusage.??????')" ]
+}
+
 stub_profile_ccusage() {
   local stub_dir="$1" default_report="$2" alt_report="$3"
   cat > "$stub_dir/ccusage" <<EOF2
