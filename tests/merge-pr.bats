@@ -14,6 +14,8 @@ setup_file() {
 	defaultBranch = main
 [gc]
 	auto = 0
+[maintenance]
+	auto = false
 EOF
 
   local remote="$TEMPLATE/remote.git"
