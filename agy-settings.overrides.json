@@ -7,5 +7,6 @@
   "notifications": false,
   "allowAgentAccessGitignoreFiles": false,
   "allowTabAccessGitignoreFiles": false,
-  "allowCascadeAccessGitignoreFiles": false
+  "allowCascadeAccessGitignoreFiles": false,
+  "model": "Gemini 4 Neon (Medium)"
 }

@@ -223,6 +223,7 @@ EOF
   # Overrides applied
   [ "$(jq -r '.agentMode' "$settings")" = "auto" ]
   [ "$(jq -r '.enableTerminalSandbox' "$settings")" = "true" ]
+  [ "$(jq -r '.model' "$settings")" = "Gemini 4 Neon (Medium)" ]
   [ "$(jq -r '.enableTelemetry' "$settings")" = "false" ]
   [ "$(jq -r '.showFeedbackSurvey' "$settings")" = "false" ]
   [ "$(jq -r '.showTips' "$settings")" = "false" ]
