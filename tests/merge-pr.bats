@@ -1,28 +1,83 @@
 #!/usr/bin/env bats
 
-setup() {
+setup_file() {
   local base; base="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$base/skills/merge-pr/merge-pr.sh"
+  export SCRIPT="$base/skills/merge-pr/merge-pr.sh"
 
+  export TEMPLATE; TEMPLATE="$(mktemp -d)"
+  export GIT_CONFIG_GLOBAL="$TEMPLATE/gitconfig"
+  cat > "$GIT_CONFIG_GLOBAL" <<'EOF'
+[user]
+	email = test@example.com
+	name = test
+[init]
+	defaultBranch = main
+[gc]
+	auto = 0
+EOF
+
+  local remote="$TEMPLATE/remote.git"
+  local main="$TEMPLATE/repo"
+  local wt="$TEMPLATE/repo-feat"
+  git init -q --bare "$remote"
+  git clone -q "$remote" "$main" 2>/dev/null
+  git -C "$main" remote set-url origin ../remote.git
+  echo "see ../wiki" > "$main/AGENTS.md"
+  git -C "$main" add -A && git -C "$main" commit -qm init && git -C "$main" push -q origin main
+  git -C "$main" worktree add -q -b feat "$wt"
+  echo change > "$wt/file"
+  git -C "$wt" add -A && git -C "$wt" commit -qm feat && git -C "$wt" push -q origin feat
+
+  export TEMPLATE_HEAD_OID; TEMPLATE_HEAD_OID="$(git -C "$wt" rev-parse HEAD)"
+
+  mkdir -p "$TEMPLATE/bin"
+  cat > "$TEMPLATE/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "pr checks")
+    checks=0
+    [ -f "$STUB_CHECKS" ] && read -r checks < "$STUB_CHECKS"
+    checks=$((checks + 1))
+    echo "$checks" > "$STUB_CHECKS"
+    [ "$checks" -le "$STUB_PENDING_CHECKS" ] && exit 8
+    exit "$STUB_CHECKS_STATUS"
+    ;;
+  "pr merge")
+    : > "$STUB_MERGED"
+    new_sha="$(git -C "$STUB_REMOTE" commit-tree feat^{tree} -p main -m "feat (#7)")"
+    git -C "$STUB_REMOTE" update-ref refs/heads/main "$new_sha"
+    ;;
+  "pr view")
+    if [[ "$*" == *mergeCommit* ]]; then
+      echo "{\"mergeCommit\":{\"oid\":\"$(git -C "$STUB_REMOTE" rev-parse main)\"}}"
+    else
+      mergeable="$STUB_MERGEABLE"
+      views=0
+      [ -f "$STUB_VIEWS" ] && read -r views < "$STUB_VIEWS"
+      views=$((views + 1))
+      echo "$views" > "$STUB_VIEWS"
+      [ "$views" -le "$STUB_UNKNOWN_VIEWS" ] && mergeable=UNKNOWN
+      echo "{\"number\":$STUB_NUMBER,\"title\":\"feat\",\"url\":\"https://x/pull/7\",\"state\":\"OPEN\",\"mergeable\":\"$mergeable\",\"headRefName\":\"feat\",\"headRefOid\":\"$STUB_HEAD_OID\",\"baseRefName\":\"main\"}"
+    fi
+    ;;
+esac
+STUB
+  chmod +x "$TEMPLATE/bin/gh"
+}
+
+teardown_file() { rm -rf "$TEMPLATE"; }
+
+setup() {
   ROOT="$(mktemp -d)"
-  export GIT_CONFIG_GLOBAL="$ROOT/gitconfig"
-  git config --global user.email test@example.com
-  git config --global user.name test
-  git config --global init.defaultBranch main
-
   REMOTE="$ROOT/remote.git"
   MAIN="$ROOT/repo"
   WORKTREE="$ROOT/repo-feat"
-  git init -q --bare "$REMOTE"
-  git clone -q "$REMOTE" "$MAIN" 2>/dev/null
-  echo "see ../wiki" > "$MAIN/AGENTS.md"
-  git -C "$MAIN" add -A && git -C "$MAIN" commit -qm init && git -C "$MAIN" push -q origin main
-  git -C "$MAIN" worktree add -q -b feat "$WORKTREE"
-  echo change > "$WORKTREE/file"
-  git -C "$WORKTREE" add -A && git -C "$WORKTREE" commit -qm feat && git -C "$WORKTREE" push -q origin feat
+  cp -R "$TEMPLATE/remote.git" "$TEMPLATE/repo" "$TEMPLATE/repo-feat" "$ROOT/"
+  printf 'gitdir: %s/.git/worktrees/repo-feat\n' "$MAIN" > "$WORKTREE/.git"
+  printf '%s/.git\n' "$WORKTREE" > "$MAIN/.git/worktrees/repo-feat/gitdir"
 
   export STUB_REMOTE="$REMOTE"
-  export STUB_HEAD_OID; STUB_HEAD_OID="$(git -C "$WORKTREE" rev-parse HEAD)"
+  export STUB_HEAD_OID="$TEMPLATE_HEAD_OID"
   export STUB_MERGED="$ROOT/merged"
   export STUB_CHECKS_STATUS=0
   export STUB_MERGEABLE=MERGEABLE
@@ -34,39 +89,7 @@ setup() {
   export STUB_PENDING_CHECKS=0
   export MERGE_PR_CHECKS_DELAY=0
 
-  mkdir -p "$ROOT/bin"
-  cat > "$ROOT/bin/gh" <<'STUB'
-#!/usr/bin/env bash
-case "$1 $2" in
-  "pr checks")
-    checks=$(( $(cat "$STUB_CHECKS" 2>/dev/null || echo 0) + 1 ))
-    echo "$checks" > "$STUB_CHECKS"
-    [ "$checks" -le "$STUB_PENDING_CHECKS" ] && exit 8
-    exit "$STUB_CHECKS_STATUS"
-    ;;
-  "pr merge")
-    touch "$STUB_MERGED"
-    clone="$(mktemp -d)"
-    git clone -q "$STUB_REMOTE" "$clone" 2>/dev/null
-    git -C "$clone" merge -q --squash origin/feat >/dev/null
-    git -C "$clone" commit -qm "feat (#7)"
-    git -C "$clone" push -q origin main
-    ;;
-  "pr view")
-    if [[ "$*" == *mergeCommit* ]]; then
-      echo "{\"mergeCommit\":{\"oid\":\"$(git -C "$STUB_REMOTE" rev-parse main)\"}}"
-    else
-      mergeable="$STUB_MERGEABLE"
-      views=$(( $(cat "$STUB_VIEWS" 2>/dev/null || echo 0) + 1 ))
-      echo "$views" > "$STUB_VIEWS"
-      [ "$views" -le "$STUB_UNKNOWN_VIEWS" ] && mergeable=UNKNOWN
-      echo "{\"number\":$STUB_NUMBER,\"title\":\"feat\",\"url\":\"https://x/pull/7\",\"state\":\"OPEN\",\"mergeable\":\"$mergeable\",\"headRefName\":\"feat\",\"headRefOid\":\"$STUB_HEAD_OID\",\"baseRefName\":\"main\"}"
-    fi
-    ;;
-esac
-STUB
-  chmod +x "$ROOT/bin/gh"
-  export PATH="$ROOT/bin:$PATH"
+  export PATH="$TEMPLATE/bin:$PATH"
   cd "$MAIN"
 }
 
@@ -184,11 +207,18 @@ teardown() { rm -rf "$ROOT"; }
 }
 
 @test "reports a milestone when the merge is the 100th commit on base" {
-  for _ in $(seq 98); do git -C "$MAIN" commit -q --allow-empty -m filler; done
-  git -C "$MAIN" push -q origin main
-  git -C "$WORKTREE" rebase -q main
-  git -C "$WORKTREE" push -qf origin feat
-  export STUB_HEAD_OID; STUB_HEAD_OID="$(git -C "$WORKTREE" rev-parse HEAD)"
+  {
+    printf 'commit refs/heads/main\nmark :1\ncommitter test <test@example.com> 1700000001 +0000\ndata 6\nfiller\nfrom refs/heads/main^0\n'
+    local i
+    for ((i = 2; i <= 98; i++)); do
+      printf 'commit refs/heads/main\nmark :%d\ncommitter test <test@example.com> %d +0000\ndata 6\nfiller\nfrom :%d\n' "$i" "$((1700000000 + i))" "$((i - 1))"
+    done
+  } | git -C "$MAIN" fast-import --quiet
+  local new_feat
+  new_feat="$(git -C "$MAIN" commit-tree feat^{tree} -p main -m feat)"
+  git -C "$MAIN" update-ref refs/heads/feat "$new_feat"
+  git -C "$MAIN" push -qf origin main feat
+  export STUB_HEAD_OID="$new_feat"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"milestone=commit:100"* ]]
