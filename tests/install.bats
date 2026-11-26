@@ -221,6 +221,8 @@ EOF
 
   local settings="$HOME/.gemini/antigravity-cli/settings.json"
   # Overrides applied
+  [ "$(jq -r '.agentMode' "$settings")" = "auto" ]
+  [ "$(jq -r '.enableTerminalSandbox' "$settings")" = "true" ]
   [ "$(jq -r '.enableTelemetry' "$settings")" = "false" ]
   [ "$(jq -r '.showFeedbackSurvey' "$settings")" = "false" ]
   [ "$(jq -r '.showTips' "$settings")" = "false" ]

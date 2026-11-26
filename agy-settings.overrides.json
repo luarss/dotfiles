@@ -1,4 +1,6 @@
 {
+  "agentMode": "auto",
+  "enableTerminalSandbox": true,
   "enableTelemetry": false,
   "showFeedbackSurvey": false,
   "showTips": false,

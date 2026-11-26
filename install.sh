@@ -739,13 +739,13 @@ install_bin() {
   done
 }
 
-# Antigravity CLI (`agy`, Google's agentic dev tool) settings: telemetry off,
-# no extraneous AI nudges (tips banner/feedback surveys/notifications) — same
-# policy as the Claude telemetry opt-outs elsewhere in this repo. Merged
-# in-place with jq rather than symlinked, because the live file also carries
-# state the app itself writes (trustedWorkspaces, gcp.project) that a
-# straight overwrite would destroy. Homebrew-cask-only (see Brewfile), so
-# Darwin-gated.
+# Antigravity CLI (`agy`, Google's agentic dev tool) settings: auto mode +
+# terminal sandbox on, telemetry off, no extraneous AI nudges (tips
+# banner/feedback surveys/notifications) — same policy as the Claude telemetry
+# opt-outs elsewhere in this repo. Merged in-place with jq rather than
+# symlinked, because the live file also carries state the app itself writes
+# (trustedWorkspaces, gcp.project) that a straight overwrite would destroy.
+# Homebrew-cask-only (see Brewfile), so Darwin-gated.
 install_agy_settings() {
   local dst="$HOME/.gemini/antigravity-cli/settings.json"
   mkdir -p "$(dirname "$dst")"

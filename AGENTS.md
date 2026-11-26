@@ -93,6 +93,7 @@ Google's [Antigravity](https://antigravity.google) operates across two surfaces:
 `install_agy_settings` and `install_antigravity_desktop_settings` in `install.sh` (Darwin-only, called from `main`) merge security permissions derived from `file-permissions.json` and UI/telemetry overrides from `agy-settings.overrides.json` in-place using jq rather than symlinking wholesale, preserving state written by the applications themselves (`trustedWorkspaces`, `gcp.project`, `autoExecutionPolicy`, `remoteControlHostname`, `themeMode`).
 
 The overrides enforce:
+- Autonomous execution inside the terminal sandbox (`agentMode: "auto"`, `enableTerminalSandbox: true`)
 - Disabling telemetry and crash reporting (`enableTelemetry: false`)
 - Disabling extraneous AI nudges (`showFeedbackSurvey`, `showTips`, `notifications`)
 - Strict gitignore boundaries (`allowAgentAccessGitignoreFiles: false`, etc.)
