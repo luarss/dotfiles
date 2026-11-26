@@ -60,16 +60,11 @@ generate_profiles() {
   local only="${1:-}"
   local manifest="$DOTFILES/providers.json"
   local base perms
-  base="$(cat "$DOTFILES/settings.base.json")"
+  base="$(<"$DOTFILES/settings.base.json")"
   perms="{}"
-  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
-  local name
-  for name in $(jq -r 'keys[]' "$manifest"); do
-    [ -n "$only" ] && [ "$name" != "$only" ] && continue
-    local dir token_var token pentry
-    dir="$(jq -r --arg n "$name" '.[$n].dir' "$manifest")"
-    pentry="$(resolve_provider "$name")"
-    token_var="$(jq -r '.token // empty' <<<"$pentry")"
+  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(<"$DOTFILES/file-permissions.json")"
+  local name dir token_var token pentry
+  while IFS=$'\x1f' read -r name dir token_var pentry; do
     token=""
     [ -n "$token_var" ] && token="${!token_var:-}"
 
@@ -77,14 +72,19 @@ generate_profiles() {
     # CLAUDE.md is gone — `instructionFiles: "claude-md-or-agents-md"` loads
     # AGENTS.md directly when CLAUDE.md is absent.
     symlink "$dir/AGENTS.md"
-    ln -sf "$DOTFILES/status-line.sh" "$HOME/$dir/status-line.sh"
+    ln -sf "$DOTFILES/status-line.sh" "$DOTFILES/models.json" "$HOME/$dir/"
     echo "LINK  $HOME/$dir/status-line.sh -> $DOTFILES/status-line.sh"
-    ln -sf "$DOTFILES/models.json" "$HOME/$dir/models.json"
     echo "LINK  $HOME/$dir/models.json -> $DOTFILES/models.json"
     jq -n --argjson base "$base" --argjson perms "$perms" --argjson p "$pentry" --arg token "$token" \
       -f "$DOTFILES/gen-settings.jq" > "$HOME/$dir/settings.json"
     echo "GEN   $HOME/$dir/settings.json ($name)"
-  done
+  done < <(jq -r --arg only "$only" '
+    . as $all | to_entries[]
+    | if $only != "" then select(.key == $only) else . end
+    | .key as $k | .value as $c
+    | (if $c.extends then ($all[$c.extends] * ($c | del(.extends, .aliases, .dir))) + {dir: $c.dir, aliases: $c.aliases} else $c end) as $p
+    | "\($k)\u001f\($p.dir)\u001f\($p.token // "")\u001f\($p | tojson)"
+  ' "$manifest")
 }
 
 resolve_provider() {
@@ -94,11 +94,18 @@ resolve_provider() {
 }
 
 link_shared_entries() {
-  local name dir
-  for name in $(jq -r 'to_entries[] | select(.value.share) | .key' "$DOTFILES/providers.json"); do
-    dir="$(jq -r --arg n "$name" '.[$n].dir' "$DOTFILES/providers.json")"
-    link_shared_entries_for "$dir" "$(resolve_provider "$name")"
-  done
+  local dir entry
+  while IFS=$'\x1f' read -r dir entry; do
+    [ -n "$entry" ] || continue
+    local src="$HOME/.claude/$entry" dst="$HOME/$dir/$entry"
+    [ -e "$src" ] || { echo "SKIP  $dst (no $src)"; continue; }
+    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+      echo "SKIP  $dst (exists and is not a symlink)"
+      continue
+    fi
+    ln -sfn "$src" "$dst"
+    echo "LINK  $dst -> $src"
+  done < <(jq -r 'to_entries[] | select(.value.share) | .value as $v | $v.share[] | "\($v.dir)\u001f\(.)"' "$DOTFILES/providers.json")
 }
 
 link_shared_entries_for() {
@@ -135,16 +142,18 @@ generate_zsh_profiles() {
     echo
     echo 'cl() {'
     echo '  local _p="${1:-default}"'
-    echo "  if [[ \"\$_p\" == -l || \"\$_p\" == --list ]]; then print -l $(jq -r 'keys | join(" ")' "$manifest"); return 0; fi"
-    echo '  local _dir'
-    echo '  case "$_p" in'
-    jq -r 'to_entries[] | "    \(.key)) _dir=\"\(.value.dir)\" ;;"' "$manifest"
-    echo '    *) print "cl: unknown provider '\''$_p'\'' (try: cl --list)" >&2; return 1 ;;'
-    echo '  esac'
-    echo '  claude_with_profile "$HOME/$_dir" "${@:2}"'
-    echo '}'
-    echo
-    jq -r 'to_entries[] | .value as $v | $v.aliases[] | "\(.)() { claude_with_profile \"$HOME/\($v.dir)\" \"$@\"; }"' "$manifest"
+    jq -r '
+      "  if [[ \"$_p\" == -l || \"$_p\" == --list ]]; then print -l \(keys | join(" ")); return 0; fi",
+      "  local _dir",
+      "  case \"$_p\" in",
+      (to_entries[] | "    \(.key)) _dir=\"\(.value.dir)\" ;;"),
+      "    *) print \"cl: unknown provider \u0027$_p\u0027 (try: cl --list)\" >&2; return 1 ;;",
+      "  esac",
+      "  claude_with_profile \"$HOME/$_dir\" \"${@:2}\"",
+      "}",
+      "",
+      (to_entries[] | .value as $v | $v.aliases[] | "\(.)() { claude_with_profile \"$HOME/\($v.dir)\" \"$@\"; }")
+    ' "$manifest"
   } > "$out"
   echo "GEN   $out"
 }
@@ -155,7 +164,8 @@ install_skills() {
   mkdir -p "$skills_dst"
   for skill_dir in "$skills_src"/*/; do
     local name dst
-    name="$(basename "$skill_dir")"
+    name="${skill_dir%/}"
+    name="${name##*/}"
     dst="$skills_dst/$name"
     # Leave a real (manually installed) dir alone; repair stale/dangling symlinks.
     # -n so an existing symlink-to-dir is replaced, not followed into.
@@ -587,29 +597,34 @@ install_hooks() {
   local hooks_dst="$HOME/.claude/hooks"
   [ -d "$hooks_src" ] || return 0
   mkdir -p "$hooks_dst"
+  local hooks=() hook
   for hook in "$hooks_src"/*.sh; do
     [ -e "$hook" ] || continue
-    local name dst
-    name="$(basename "$hook")"
-    dst="$hooks_dst/$name"
-    ln -sf "$hook" "$dst"
-    echo "LINK  $dst -> $hook"
+    hooks+=("$hook")
+  done
+  [ "${#hooks[@]}" -eq 0 ] && return 0
+  ln -sf "${hooks[@]}" "$hooks_dst/"
+  for hook in "${hooks[@]}"; do
+    echo "LINK  $hooks_dst/${hook##*/} -> $hook"
   done
 }
 
 install_commands() {
   local commands_src="$DOTFILES/commands"
   [ -d "$commands_src" ] || return 0
+  local cmds=() cmd
+  for cmd in "$commands_src"/*.md; do
+    [ -e "$cmd" ] || continue
+    cmds+=("$cmd")
+  done
+  local profile
   for profile in "${_claude_profiles[@]}"; do
     local commands_dst="$HOME/$profile/commands"
     mkdir -p "$commands_dst"
-    for cmd in "$commands_src"/*.md; do
-      [ -e "$cmd" ] || continue
-      local name dst
-      name="$(basename "$cmd")"
-      dst="$commands_dst/$name"
-      ln -sf "$cmd" "$dst"
-      echo "LINK  $dst -> $cmd"
+    [ "${#cmds[@]}" -eq 0 ] && continue
+    ln -sf "${cmds[@]}" "$commands_dst/"
+    for cmd in "${cmds[@]}"; do
+      echo "LINK  $commands_dst/${cmd##*/} -> $cmd"
     done
   done
 }
@@ -703,6 +718,7 @@ GCLOUD_PYTHON_ENV="$HOME/.local/share/gcloud-python"
 GCLOUD_NUMPY_VERSION="2.5.5"
 
 install_gcloud_python() {
+  [ -n "${DOTFILES_SKIP_GCLOUD_PYTHON:-}" ] && { echo "SKIP  gcloud python (DOTFILES_SKIP_GCLOUD_PYTHON set)"; return; }
   command -v uv >/dev/null || { echo "SKIP  gcloud python (uv not found)"; return; }
 
   if "$GCLOUD_PYTHON_ENV/bin/python" -c "import numpy, sys; sys.exit(numpy.__version__ != '$GCLOUD_NUMPY_VERSION')" 2>/dev/null; then
@@ -731,11 +747,15 @@ install_fli() {
 
 install_bin() {
   mkdir -p "$HOME/.local/bin"
-  local bin
+  local bins=() bin
   for bin in "$DOTFILES/bin"/*; do
     [ -x "$bin" ] || continue
-    ln -sf "$bin" "$HOME/.local/bin/$(basename "$bin")"
-    echo "LINK  $HOME/.local/bin/$(basename "$bin") -> $bin"
+    bins+=("$bin")
+  done
+  [ "${#bins[@]}" -eq 0 ] && return 0
+  ln -sf "${bins[@]}" "$HOME/.local/bin/"
+  for bin in "${bins[@]}"; do
+    echo "LINK  $HOME/.local/bin/${bin##*/} -> $bin"
   done
 }
 
@@ -748,14 +768,14 @@ install_bin() {
 # Homebrew-cask-only (see Brewfile), so Darwin-gated.
 install_agy_settings() {
   local dst="$HOME/.gemini/antigravity-cli/settings.json"
-  mkdir -p "$(dirname "$dst")"
+  mkdir -p "${dst%/*}"
   local current="{}"
-  [ -f "$dst" ] && current="$(cat "$dst")"
+  [ -f "$dst" ] && current="$(<"$dst")"
   local perms="{}"
-  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
+  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(<"$DOTFILES/file-permissions.json")"
   local agy_perms
   agy_perms="$(jq -n --arg home "$HOME" --argjson perms "$perms" --arg target agy_cli -f "$DOTFILES/gen-permissions.jq")"
-  jq -s '.[0] * .[1] * .[2]' <(echo "$current") <(echo "$agy_perms") "$DOTFILES/agy-settings.overrides.json" > "$dst.tmp" \
+  jq -s '.[0] * .[1] * .[2]' <(printf '%s\n' "$current") <(printf '%s\n' "$agy_perms") "$DOTFILES/agy-settings.overrides.json" > "$dst.tmp" \
     && mv "$dst.tmp" "$dst"
   echo "SET   $dst <- agy-settings.overrides.json + file-permissions.json"
 }
@@ -766,14 +786,14 @@ install_agy_settings() {
 # existing user state (autoExecutionPolicy, themeMode, remoteControlHostname, etc.).
 install_antigravity_desktop_settings() {
   local dst="$HOME/.gemini/config/config.json"
-  mkdir -p "$(dirname "$dst")"
+  mkdir -p "${dst%/*}"
   local current="{}"
-  [ -f "$dst" ] && current="$(cat "$dst")"
+  [ -f "$dst" ] && current="$(<"$dst")"
   local perms="{}"
-  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(cat "$DOTFILES/file-permissions.json")"
+  [ -f "$DOTFILES/file-permissions.json" ] && perms="$(<"$DOTFILES/file-permissions.json")"
   local desktop_grants
   desktop_grants="$(jq -n --arg home "$HOME" --argjson perms "$perms" --arg target antigravity_desktop -f "$DOTFILES/gen-permissions.jq")"
-  jq -s '.[0] * .[1]' <(echo "$current") <(echo "$desktop_grants") > "$dst.tmp" \
+  jq -s '.[0] * .[1]' <(printf '%s\n' "$current") <(printf '%s\n' "$desktop_grants") > "$dst.tmp" \
     && mv "$dst.tmp" "$dst"
   echo "SET   $dst <- file-permissions.json (globalPermissionGrants)"
 }
@@ -942,8 +962,7 @@ if ! is_work_machine && ! is_office_machine; then
     echo "SET   $_settings model -> sonnet, effortLevel -> high (personal)"
   done < <(jq -r 'to_entries[] | select(.key == "default" or .value.extends == "default") | .value.dir' "$DOTFILES/providers.json")
 else
-  manifest_model=$(jq -r '.model' "$HOME/.claude/settings.json")
-  manifest_effort=$(jq -r '.effortLevel' "$HOME/.claude/settings.json")
+  IFS=$'\x1f' read -r manifest_model manifest_effort < <(jq -r '"\(.model)\u001f\(.effortLevel)"' "$HOME/.claude/settings.json")
   echo "SKIP  sonnet switch (work/office machine — keeping $manifest_model, effortLevel $manifest_effort)"
 fi
 

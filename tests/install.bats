@@ -6,264 +6,100 @@
 # (no zsh wrapper there to reach a second/third profile) but still installs
 # ~/.zshrc plus the Claude Code default profile: settings.json, hooks, skills,
 # commands. CI runs on Linux, so the default (unmocked) case exercises that
-# scoped path. The one macOS test below mocks `uname` to Darwin to cover the
+# scoped path. The macOS tests below mock `uname` to Darwin to cover the
 # full install path (all profiles + zsh wrapper).
 
-setup() {
-  # Create a temporary home directory for each test
-  TEST_HOME="$(mktemp -d)"
-  export HOME="$TEST_HOME"
+setup_file() {
+  export DOTFILES_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  export INSTALL_SCRIPT="$DOTFILES_ROOT/install.sh"
+  export CURRENT_USER="$(id -un)"
+  export SHARED_FIXTURES_DIR="$(mktemp -d)"
 
-  # Path to the install script
-  INSTALL_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/install.sh"
+  # Shared read-only fixtures run once per file in parallel so tests that
+  # inspect install.sh outcomes don't repeat slow serial installs.
+  export EMPTY_HOME="$SHARED_FIXTURES_DIR/empty"
+  export LINUX_HOME="$SHARED_FIXTURES_DIR/linux"
+  export LINUX_EXISTING_HOME="$SHARED_FIXTURES_DIR/linux-existing"
+  export LINUX_IDEMPOTENT_HOME="$SHARED_FIXTURES_DIR/linux-idempotent"
+  export DARWIN_PERSONAL_HOME="$SHARED_FIXTURES_DIR/darwin-personal"
+  export DARWIN_PERSONAL_ALT_HOME="$SHARED_FIXTURES_DIR/darwin-personal-alt"
+  export DARWIN_WORK_BASE_HOME="$SHARED_FIXTURES_DIR/darwin-work-base"
+  export DARWIN_WORK_FULL_HOME="$SHARED_FIXTURES_DIR/darwin-work-full"
+  export DARWIN_OFFICE_HOME="$SHARED_FIXTURES_DIR/darwin-office"
 
-  # Isolate from the repo's real .env so tokens come only from the test env.
-  # /dev/null is not a regular file, so install.sh skips sourcing it.
-  export DOTFILES_ENV=/dev/null
+  mkdir -p \
+    "$EMPTY_HOME" \
+    "$LINUX_HOME/.grok" \
+    "$LINUX_EXISTING_HOME" \
+    "$LINUX_IDEMPOTENT_HOME" \
+    "$DARWIN_PERSONAL_HOME/.gemini/antigravity-cli" \
+    "$DARWIN_PERSONAL_HOME/.gemini/config" \
+    "$DARWIN_PERSONAL_ALT_HOME/.grok" \
+    "$DARWIN_WORK_BASE_HOME/.config/prodwatch" \
+    "$DARWIN_WORK_FULL_HOME/work/notes/NUS-Enterprise/tools" \
+    "$DARWIN_WORK_FULL_HOME/.grok" \
+    "$DARWIN_OFFICE_HOME"
 
-  # Skip the npm ci for pinned tools (network-dependent, per-test $HOME)
-  export DOTFILES_SKIP_NODE_TOOLS=1
-  export DOTFILES_SKIP_FLI=1
-  # Skip zsh plugins clone (network-dependent, per-test $HOME)
-  export DOTFILES_SKIP_ZSH_PLUGINS=1
-  export DOTFILES_SKIP_FINDER_DEFAULTS=1
-  export DOTFILES_OFFICE_USERS="no-such-office-user"
+  # Common isolated test env for shared fixture runs
+  local base_env=(
+    DOTFILES_ENV=/dev/null
+    DOTFILES_SKIP_NODE_TOOLS=1
+    DOTFILES_SKIP_GCLOUD_PYTHON=1
+    DOTFILES_SKIP_FLI=1
+    DOTFILES_SKIP_ZSH_PLUGINS=1
+    DOTFILES_SKIP_FINDER_DEFAULTS=1
+    DOTFILES_OFFICE_USERS=no-such-office-user
+  )
 
-  # Store original environment
-  ORIGINAL_DEEPSEEK_TOKEN="${DEEPSEEK_AUTH_TOKEN:-}"
-  ORIGINAL_XIAOMI_TOKEN="${XIAOMI_AUTH_TOKEN:-}"
-}
+  # 1. Clean Linux personal install (with .grok present and Finder defaults enabled to verify both are skipped)
+  (
+    export HOME="$LINUX_HOME" "${base_env[@]}"
+    unset DOTFILES_SKIP_FINDER_DEFAULTS
+    uname() { echo "Linux"; }
+    hostname() { echo "personal-linux-box"; }
+    defaults() { echo "defaults $*" >> "$HOME/calls.log"; }
+    killall() { echo "killall $*" >> "$HOME/calls.log"; }
+    export -f uname hostname defaults killall
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/linux.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/linux.status"
+  ) </dev/null &
 
-teardown() {
-  # Cleanup temp directory
-  rm -rf "$TEST_HOME"
+  # 2. Linux install with pre-existing .zshrc and .zshenv
+  (
+    export HOME="$LINUX_EXISTING_HOME" "${base_env[@]}"
+    echo "# my zshrc" > "$HOME/.zshrc"
+    echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
+    uname() { echo "Linux"; }
+    export -f uname
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/linux-existing.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/linux-existing.status"
+  ) </dev/null &
 
-  # Restore environment
-  export DEEPSEEK_AUTH_TOKEN="$ORIGINAL_DEEPSEEK_TOKEN"
-  export XIAOMI_AUTH_TOKEN="$ORIGINAL_XIAOMI_TOKEN"
-}
+  # 3. Linux idempotent re-install (runs install.sh twice)
+  (
+    export HOME="$LINUX_IDEMPOTENT_HOME" "${base_env[@]}"
+    uname() { echo "Linux"; }
+    export -f uname
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/linux-idempotent-1.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/linux-idempotent-1.status"
+    [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ] && echo "ok" >"$SHARED_FIXTURES_DIR/linux-idempotent-1.zshrc_ok"
+    cp "$HOME/.zshrc" "$SHARED_FIXTURES_DIR/linux-idempotent-1.zshrc"
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/linux-idempotent-2.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/linux-idempotent-2.status"
+  ) </dev/null &
 
-# --- Linux: scoped install (default profile only, no zsh/ZDOTDIR) ---
-
-@test "install_completes_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"GEN   $HOME/.claude/settings.json (default)"* ]]
-  [[ "$output" == *"Done."* ]]
-}
-
-@test "install_writes_only_default_profile_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  # ~/.zshrc IS installed on Linux (as a real file, not a symlink — see
-  # setup_zsh_config_writes_real_zshrc_file_on_linux for why), but the
-  # multi-profile wrapper stays macOS-only (no zsh `cl` dispatcher to reach it)
-  [ ! -e "$HOME/.zshenv" ]
-  [ -e "$HOME/.zshrc" ]
-  [ ! -L "$HOME/.zshrc" ]
-  [ ! -e "$HOME/.claude-profiles.zsh" ]
-
-  # Default Claude profile IS installed
-  [ -e "$HOME/.claude/settings.json" ]
-  [ -d "$HOME/.claude/skills" ]
-  [ -d "$HOME/.claude/hooks" ]
-  [ -L "$HOME/.claude/hooks/db-guard.sh" ]
-
-  # ...but not the macOS-only extras: other profiles, plugin lock
-  [ ! -d "$HOME/.claude-second-profile" ]
-  [ ! -d "$HOME/.claude-third-profile" ]
-  [ ! -e "$HOME/.claude/plugins/installed_plugins.json" ]
-}
-
-@test "install_default_profile_settings_on_linux_has_hooks_and_sonnet" {
-  uname() { echo "Linux"; }
-  # Mock a non-work hostname so the sonnet switch fires even when the test
-  # suite runs on the work machine itself
-  hostname() { echo "personal-linux-box"; }
-  export -f uname hostname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  # Personal (non-work) machine: model forced to sonnet regardless of OS
-  [ "$(jq -r '.model' "$HOME/.claude/settings.json")" = "sonnet" ]
-
-  # The 4-hook Bash PreToolUse chain + mysql rate limiter + symlink-memory PostToolUse are present...
-  [ "$(jq '[.hooks.PreToolUse[].hooks[].command] | length' "$HOME/.claude/settings.json")" -eq 5 ]
-  [ "$(jq '.hooks.PostToolUse[0].hooks[0].command' "$HOME/.claude/settings.json")" = '"bash ~/.claude/hooks/symlink-memory.sh"' ]
-
-  # ...but the deepseek-only guard must NOT be wired into the default profile
-  # (it belongs solely to the deepseek provider's overrides — see providers.json)
-  [ "$(jq -r '.hooks | has("UserPromptSubmit")' "$HOME/.claude/settings.json")" = "false" ]
-}
-
-@test "install_leaves_existing_home_files_untouched_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  # Pre-existing user files must survive an install attempt on Linux
-  echo "# my zshrc" > "$HOME/.zshrc"
-  echo "export ZDOTDIR=/custom" > "$HOME/.zshenv"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  grep -q "# my zshrc" "$HOME/.zshrc"
-  [ ! -L "$HOME/.zshrc" ]
-  grep -q "export ZDOTDIR=/custom" "$HOME/.zshenv"
-  [ ! -L "$HOME/.zshenv" ]
-}
-
-@test "setup_zsh_config_writes_real_zshrc_file_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  # A real file, NOT a symlink: bwrap (the sandbox this path targets) follows
-  # symlinks when precomputing tmpfs bind-mount points, so a symlink whose
-  # target isn't already in that list fails with ENOENT. A real file with a
-  # source line only needs bwrap to resolve two concrete paths.
-  [ -f "$HOME/.zshrc" ]
-  [ ! -L "$HOME/.zshrc" ]
-  local dotfiles
-  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
-  grep -qF "source \"$dotfiles/.zshrc\"" "$HOME/.zshrc"
-
-  # Re-running install.sh regenerates the same source-file, rather than
-  # getting skipped as a foreign file (idempotent re-install)
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -L "$HOME/.zshrc" ]
-  grep -qF "source \"$dotfiles/.zshrc\"" "$HOME/.zshrc"
-}
-
-# --- macOS: real install path (uname mocked to Darwin) ---
-
-@test "weekly_cutover_agent_skipped_on_non_work_machine" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  weekly-cutover agent (non-work machine)"* ]]
-  # No plist may be generated for any label on a non-work machine
-  [ ! -e "$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist" ]
-}
-
-@test "weekly_cutover_agent_installed_on_work_machine_with_vault_tool" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  # Stub launchctl/trivy so the test is hermetic: never touches the real
-  # launchd job or the network (launchctl unload by label would otherwise
-  # unload the REAL agent when tests run on the work machine itself)
-  launchctl() { return 0; }
-  trivy() { return 0; }
-  export -f uname hostname launchctl trivy
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-
-  # The agent additionally requires the vault's new-week.sh to exist
-  mkdir -p "$HOME/work/notes/NUS-Enterprise/tools"
-  touch "$HOME/work/notes/NUS-Enterprise/tools/new-week.sh"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  local plist="$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist"
-  [ -f "$plist" ]
-  grep -q "new-week.sh" "$plist"
-  grep -q "<string>--next</string>" "$plist"
-  # Wednesday 14:00 schedule
-  grep -q "<key>Weekday</key><integer>3</integer><key>Hour</key><integer>14</integer>" "$plist"
-}
-
-@test "weekly_cutover_agent_skipped_on_work_machine_without_vault_tool" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  launchctl() { return 0; }
-  trivy() { return 0; }
-  export -f uname hostname launchctl trivy
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  weekly-cutover agent (no "* ]]
-  [ ! -e "$HOME/Library/LaunchAgents/com.$(id -un).weekly-cutover.plist" ]
-}
-
-@test "install_agy_settings_merges_overrides_and_preserves_app_state" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-
-  # Simulate app-managed state that already exists before install.sh runs
-  mkdir -p "$HOME/.gemini/antigravity-cli"
-  cat > "$HOME/.gemini/antigravity-cli/settings.json" <<'EOF'
+  # 4. Darwin personal install (pre-existing agy & desktop app state, ANTHROPIC_AUTH_TOKEN, Finder defaults write)
+  (
+    export HOME="$DARWIN_PERSONAL_HOME" "${base_env[@]}" ANTHROPIC_AUTH_TOKEN="main-token"
+    unset DOTFILES_SKIP_FINDER_DEFAULTS
+    cat > "$HOME/.gemini/antigravity-cli/settings.json" <<'EOF'
 {
   "gcp": { "project": "some-project" },
   "trustedWorkspaces": ["/Users/me/work/repo"],
   "enableTelemetry": true
 }
 EOF
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SET   $HOME/.gemini/antigravity-cli/settings.json <- agy-settings.overrides.json"* ]]
-
-  local settings="$HOME/.gemini/antigravity-cli/settings.json"
-  # Overrides applied
-  [ "$(jq -r '.agentMode' "$settings")" = "auto" ]
-  [ "$(jq -r '.enableTerminalSandbox' "$settings")" = "true" ]
-  [ "$(jq -r '.model' "$settings")" = "Gemini 4 Neon (Medium)" ]
-  [ "$(jq -r '.enableTelemetry' "$settings")" = "false" ]
-  [ "$(jq -r '.showFeedbackSurvey' "$settings")" = "false" ]
-  [ "$(jq -r '.showTips' "$settings")" = "false" ]
-  [ "$(jq -r '.notifications' "$settings")" = "false" ]
-  # Gitignore access flags applied from file-permissions.json
-  [ "$(jq -r '.allowAgentAccessGitignoreFiles' "$settings")" = "false" ]
-  [ "$(jq -r '.allowTabAccessGitignoreFiles' "$settings")" = "false" ]
-  [ "$(jq -r '.allowCascadeAccessGitignoreFiles' "$settings")" = "false" ]
-  # Deny & allow rules applied from file-permissions.json (sandbox-safe absolute paths)
-  [ "$(jq -r '.permissions.deny | length' "$settings")" -gt 20 ]
-  [ "$(jq -r '.permissions.deny[0]' "$settings")" = "command(rm -rf)" ]
-  [ "$(jq --arg p "read_file($HOME/.ssh)" '.permissions.deny | index($p)' "$settings")" != "null" ]
-  [ "$(jq --arg p "read_file($HOME/.aws)" '.permissions.deny | index($p)' "$settings")" != "null" ]
-  [ "$(jq --arg p "read_file($HOME/.config/gcloud)" '.permissions.deny | index($p)' "$settings")" != "null" ]
-  [ "$(jq --arg p "read_file($HOME/.zsh_history)" '.permissions.deny | index($p)' "$settings")" != "null" ]
-  [ "$(jq --arg p "read_file($HOME/.env)" '.permissions.deny | index($p)' "$settings")" != "null" ]
-  [ "$(jq -r '.permissions.allow[0]' "$settings")" = "command(ccusage)" ]
-  [ "$(jq -r '.permissions.allow | index("read_file(/tmp/ts-pending.json)")' "$settings")" != "null" ]
-  [ "$(jq -r '.permissions.allow | index("write_file(/private/tmp/ts-decisions.json)")' "$settings")" != "null" ]
-  # Pre-existing app state untouched
-  [ "$(jq -r '.gcp.project' "$settings")" = "some-project" ]
-  [ "$(jq -r '.trustedWorkspaces[0]' "$settings")" = "/Users/me/work/repo" ]
-}
-
-@test "install_agy_settings_skipped_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -e "$HOME/.gemini/antigravity-cli/settings.json" ]
-}
-
-@test "install_antigravity_desktop_settings_merges_grants_and_preserves_user_settings" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-
-  mkdir -p "$HOME/.gemini/config"
-  cat > "$HOME/.gemini/config/config.json" <<'EOF'
+    cat > "$HOME/.gemini/config/config.json" <<'EOF'
 {
   "userSettings": {
     "autoExecutionPolicy": "CASCADE_COMMANDS_AUTO_EXECUTION_PROCEED_IN_SANDBOX",
@@ -272,84 +108,294 @@ EOF
   }
 }
 EOF
+    uname() { echo "Darwin"; }
+    hostname() { echo "personal-macbook-pro"; }
+    defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
+    killall() { echo "killall $*" >> "$HOME/calls.log"; }
+    export -f uname hostname defaults killall
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/darwin-personal.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/darwin-personal.status"
+  ) </dev/null &
 
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SET   $HOME/.gemini/config/config.json <- file-permissions.json (globalPermissionGrants)"* ]]
+  # 5. Darwin personal alt install (Finder defaults already set + ~/.grok present)
+  (
+    export HOME="$DARWIN_PERSONAL_ALT_HOME" "${base_env[@]}"
+    unset DOTFILES_SKIP_FINDER_DEFAULTS
+    uname() { echo "Darwin"; }
+    hostname() { echo "personal-macbook-pro"; }
+    defaults() {
+      echo "defaults $*" >> "$HOME/calls.log"
+      case "$3" in
+        FXPreferred*) echo "Nlsv" ;;
+        DSDontWrite*) echo "1" ;;
+      esac
+    }
+    killall() { echo "killall $*" >> "$HOME/calls.log"; }
+    export -f uname hostname defaults killall
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/darwin-personal-alt.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/darwin-personal-alt.status"
+  ) </dev/null &
 
-  local config="$HOME/.gemini/config/config.json"
-  # Existing userSettings preserved
-  [ "$(jq -r '.userSettings.autoExecutionPolicy' "$config")" = "CASCADE_COMMANDS_AUTO_EXECUTION_PROCEED_IN_SANDBOX" ]
-  [ "$(jq -r '.userSettings.themeMode' "$config")" = "THEME_MODE_INHERIT" ]
-  [ "$(jq -r '.userSettings.remoteControlHostname' "$config")" = "my-host" ]
-  # Global permission grants applied (sandbox-safe absolute paths)
-  [ "$(jq -r '.userSettings.globalPermissionGrants.deny | length' "$config")" -gt 20 ]
-  [ "$(jq -r '.userSettings.globalPermissionGrants.deny[0]' "$config")" = "command(rm -rf)" ]
-  [ "$(jq --arg p "read_file($HOME/.ssh)" '.userSettings.globalPermissionGrants.deny | index($p)' "$config")" != "null" ]
-  [ "$(jq -r '.userSettings.globalPermissionGrants.allow[0]' "$config")" = "command(ccusage)" ]
-  [ "$(jq -r '.userSettings.globalPermissionGrants.allow | index("write_file(/tmp/ts-decisions.json)")' "$config")" != "null" ]
+  # 6. Darwin work install without vault tool (stale prodwatch identity, non-real HOME)
+  (
+    export HOME="$DARWIN_WORK_BASE_HOME" "${base_env[@]}" DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+    echo "PRODWATCH_GITHUB_USER=stale" > "$HOME/.config/prodwatch/identity"
+    uname() { echo "Darwin"; }
+    hostname() { echo "custom-corp-laptop"; }
+    launchctl() { return 0; }
+    trivy() { return 0; }
+    defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
+    dscl() { echo "NFSHomeDirectory: /Users/someone-else"; }
+    export -f uname hostname launchctl trivy defaults dscl
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/darwin-work-base.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/darwin-work-base.status"
+  ) </dev/null &
+
+  # 7. Darwin work install with vault tool + .grok + real HOME
+  (
+    export HOME="$DARWIN_WORK_FULL_HOME" "${base_env[@]}" DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
+    touch "$HOME/work/notes/NUS-Enterprise/tools/new-week.sh"
+    uname() { echo "Darwin"; }
+    hostname() { echo "custom-corp-laptop"; }
+    launchctl() { return 0; }
+    trivy() { return 0; }
+    defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
+    dscl() { echo "NFSHomeDirectory: $HOME"; }
+    export -f uname hostname launchctl trivy defaults dscl
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/darwin-work-full.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/darwin-work-full.status"
+  ) </dev/null &
+
+  # 8. Darwin office install
+  (
+    export HOME="$DARWIN_OFFICE_HOME" "${base_env[@]}" DOTFILES_OFFICE_USERS="$CURRENT_USER"
+    uname() { echo "Darwin"; }
+    hostname() { echo "office-mac-mini"; }
+    launchctl() { return 0; }
+    export -f uname hostname launchctl
+    bash "$INSTALL_SCRIPT" >"$SHARED_FIXTURES_DIR/darwin-office.out" 2>&1
+    echo $? >"$SHARED_FIXTURES_DIR/darwin-office.status"
+  ) </dev/null &
+
+  wait
+}
+
+teardown_file() {
+  rm -rf "$SHARED_FIXTURES_DIR"
+}
+
+setup() {
+  export HOME="$EMPTY_HOME"
+  export DOTFILES_ENV=/dev/null
+  export DOTFILES_SKIP_NODE_TOOLS=1
+  export DOTFILES_SKIP_GCLOUD_PYTHON=1
+  export DOTFILES_SKIP_FLI=1
+  export DOTFILES_SKIP_ZSH_PLUGINS=1
+  export DOTFILES_SKIP_FINDER_DEFAULTS=1
+  export DOTFILES_OFFICE_USERS="no-such-office-user"
+}
+
+# --- Linux: scoped install (default profile only, no zsh/ZDOTDIR) ---
+
+@test "install_completes_on_linux" {
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+  local out
+  out="$(<"$SHARED_FIXTURES_DIR/linux.out")"
+  [[ "$out" == *"GEN   $LINUX_HOME/.claude/settings.json (default)"* ]]
+  [[ "$out" == *"Done."* ]]
+}
+
+@test "install_writes_only_default_profile_on_linux" {
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+
+  # ~/.zshrc IS installed on Linux (as a real file, not a symlink — see
+  # setup_zsh_config_writes_real_zshrc_file_on_linux for why), but the
+  # multi-profile wrapper stays macOS-only (no zsh `cl` dispatcher to reach it)
+  [ ! -e "$LINUX_HOME/.zshenv" ]
+  [ -e "$LINUX_HOME/.zshrc" ]
+  [ ! -L "$LINUX_HOME/.zshrc" ]
+  [ ! -e "$LINUX_HOME/.claude-profiles.zsh" ]
+
+  # Default Claude profile IS installed
+  [ -e "$LINUX_HOME/.claude/settings.json" ]
+  [ -d "$LINUX_HOME/.claude/skills" ]
+  [ -d "$LINUX_HOME/.claude/hooks" ]
+  [ -L "$LINUX_HOME/.claude/hooks/db-guard.sh" ]
+
+  # ...but not the macOS-only extras: other profiles, plugin lock
+  [ ! -d "$LINUX_HOME/.claude-second-profile" ]
+  [ ! -d "$LINUX_HOME/.claude-third-profile" ]
+  [ ! -e "$LINUX_HOME/.claude/plugins/installed_plugins.json" ]
+}
+
+@test "install_default_profile_settings_on_linux_has_hooks_and_sonnet" {
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+
+  # Personal (non-work) machine: model forced to sonnet regardless of OS;
+  # 4-hook Bash PreToolUse chain + mysql rate limiter + symlink-memory PostToolUse present;
+  # deepseek-only UserPromptSubmit guard must NOT be wired into the default profile.
+  jq -e '
+    .model == "sonnet"
+    and ([.hooks.PreToolUse[].hooks[].command] | length) == 5
+    and .hooks.PostToolUse[0].hooks[0].command == "bash ~/.claude/hooks/symlink-memory.sh"
+    and (.hooks | has("UserPromptSubmit") | not)
+  ' "$LINUX_HOME/.claude/settings.json" >/dev/null
+}
+
+@test "install_leaves_existing_home_files_untouched_on_linux" {
+  [ "$(<"$SHARED_FIXTURES_DIR/linux-existing.status")" -eq 0 ]
+
+  # Pre-existing user files must survive an install attempt on Linux
+  grep -q "# my zshrc" "$LINUX_EXISTING_HOME/.zshrc"
+  [ ! -L "$LINUX_EXISTING_HOME/.zshrc" ]
+  grep -q "export ZDOTDIR=/custom" "$LINUX_EXISTING_HOME/.zshenv"
+  [ ! -L "$LINUX_EXISTING_HOME/.zshenv" ]
+}
+
+@test "setup_zsh_config_writes_real_zshrc_file_on_linux" {
+  [ "$(<"$SHARED_FIXTURES_DIR/linux-idempotent-1.status")" -eq 0 ]
+
+  # A real file, NOT a symlink: bwrap (the sandbox this path targets) follows
+  # symlinks when precomputing tmpfs bind-mount points, so a symlink whose
+  # target isn't already in that list fails with ENOENT. A real file with a
+  # source line only needs bwrap to resolve two concrete paths.
+  [ -f "$SHARED_FIXTURES_DIR/linux-idempotent-1.zshrc_ok" ]
+  grep -qF "source \"$DOTFILES_ROOT/.zshrc\"" "$SHARED_FIXTURES_DIR/linux-idempotent-1.zshrc"
+
+  # Re-running install.sh regenerates the same source-file, rather than
+  # getting skipped as a foreign file (idempotent re-install)
+  [ "$(<"$SHARED_FIXTURES_DIR/linux-idempotent-2.status")" -eq 0 ]
+  [ ! -L "$LINUX_IDEMPOTENT_HOME/.zshrc" ]
+  grep -qF "source \"$DOTFILES_ROOT/.zshrc\"" "$LINUX_IDEMPOTENT_HOME/.zshrc"
+}
+
+# --- macOS: real install path (uname mocked to Darwin) ---
+
+@test "weekly_cutover_agent_skipped_on_non_work_machine" {
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.out")" == *"SKIP  weekly-cutover agent (non-work machine)"* ]]
+  # No plist may be generated for any label on a non-work machine
+  [ ! -e "$DARWIN_PERSONAL_HOME/Library/LaunchAgents/com.$CURRENT_USER.weekly-cutover.plist" ]
+}
+
+@test "weekly_cutover_agent_installed_on_work_machine_with_vault_tool" {
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-work-full.status")" -eq 0 ]
+
+  local plist="$DARWIN_WORK_FULL_HOME/Library/LaunchAgents/com.$CURRENT_USER.weekly-cutover.plist"
+  [ -f "$plist" ]
+  grep -q "new-week.sh" "$plist"
+  grep -q "<string>--next</string>" "$plist"
+  # Wednesday 14:00 schedule
+  grep -q "<key>Weekday</key><integer>3</integer><key>Hour</key><integer>14</integer>" "$plist"
+}
+
+@test "weekly_cutover_agent_skipped_on_work_machine_without_vault_tool" {
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-work-base.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-work-base.out")" == *"SKIP  weekly-cutover agent (no "* ]]
+  [ ! -e "$DARWIN_WORK_BASE_HOME/Library/LaunchAgents/com.$CURRENT_USER.weekly-cutover.plist" ]
+}
+
+@test "install_agy_settings_merges_overrides_and_preserves_app_state" {
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.out")" == *"SET   $DARWIN_PERSONAL_HOME/.gemini/antigravity-cli/settings.json <- agy-settings.overrides.json"* ]]
+
+  local settings="$DARWIN_PERSONAL_HOME/.gemini/antigravity-cli/settings.json"
+  # Overrides applied, gitignore flags + deny/allow rules applied, pre-existing app state untouched
+  jq -e --arg home "$DARWIN_PERSONAL_HOME" '
+    .agentMode == "auto"
+    and .enableTerminalSandbox == true
+    and .model == "Gemini 4 Neon (Medium)"
+    and .enableTelemetry == false
+    and .showFeedbackSurvey == false
+    and .showTips == false
+    and .notifications == false
+    and .allowAgentAccessGitignoreFiles == false
+    and .allowTabAccessGitignoreFiles == false
+    and .allowCascadeAccessGitignoreFiles == false
+    and (.permissions.deny | length) > 20
+    and .permissions.deny[0] == "command(rm -rf)"
+    and (.permissions.deny | index("read_file(\($home)/.ssh)")) != null
+    and (.permissions.deny | index("read_file(\($home)/.aws)")) != null
+    and (.permissions.deny | index("read_file(\($home)/.config/gcloud)")) != null
+    and (.permissions.deny | index("read_file(\($home)/.zsh_history)")) != null
+    and (.permissions.deny | index("read_file(\($home)/.env)")) != null
+    and .permissions.allow[0] == "command(ccusage)"
+    and (.permissions.allow | index("read_file(/tmp/ts-pending.json)")) != null
+    and (.permissions.allow | index("write_file(/private/tmp/ts-decisions.json)")) != null
+    and .gcp.project == "some-project"
+    and .trustedWorkspaces[0] == "/Users/me/work/repo"
+  ' "$settings" >/dev/null
+}
+
+@test "install_agy_settings_skipped_on_linux" {
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+  [ ! -e "$LINUX_HOME/.gemini/antigravity-cli/settings.json" ]
+}
+
+@test "install_antigravity_desktop_settings_merges_grants_and_preserves_user_settings" {
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.out")" == *"SET   $DARWIN_PERSONAL_HOME/.gemini/config/config.json <- file-permissions.json (globalPermissionGrants)"* ]]
+
+  local config="$DARWIN_PERSONAL_HOME/.gemini/config/config.json"
+  # Existing userSettings preserved + global permission grants applied
+  jq -e --arg home "$DARWIN_PERSONAL_HOME" '
+    .userSettings.autoExecutionPolicy == "CASCADE_COMMANDS_AUTO_EXECUTION_PROCEED_IN_SANDBOX"
+    and .userSettings.themeMode == "THEME_MODE_INHERIT"
+    and .userSettings.remoteControlHostname == "my-host"
+    and (.userSettings.globalPermissionGrants.deny | length) > 20
+    and .userSettings.globalPermissionGrants.deny[0] == "command(rm -rf)"
+    and (.userSettings.globalPermissionGrants.deny | index("read_file(\($home)/.ssh)")) != null
+    and .userSettings.globalPermissionGrants.allow[0] == "command(ccusage)"
+    and (.userSettings.globalPermissionGrants.allow | index("write_file(/tmp/ts-decisions.json)")) != null
+  ' "$config" >/dev/null
 }
 
 @test "install_antigravity_desktop_settings_skipped_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -e "$HOME/.gemini/config/config.json" ]
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+  [ ! -e "$LINUX_HOME/.gemini/config/config.json" ]
 }
 
 @test "permissions_parity_between_claude_and_antigravity" {
-  local dotfiles
-  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
-  local manifest="$dotfiles/file-permissions.json"
+  local manifest="$DOTFILES_ROOT/file-permissions.json"
   [ -f "$manifest" ]
 
-  local num_files num_cmds
-  num_files="$(jq '.deny.files | length' "$manifest")"
-  num_cmds="$(jq '.deny.commands | length' "$manifest")"
+  local perms claude_json agy_json desktop_json
+  perms="$(<"$manifest")"
+  claude_json="$(jq --arg target claude -f "$DOTFILES_ROOT/gen-permissions.jq" --argjson perms "$perms" -n)"
+  agy_json="$(jq --arg home "$HOME" --arg target agy_cli -f "$DOTFILES_ROOT/gen-permissions.jq" --argjson perms "$perms" -n)"
+  desktop_json="$(jq --arg home "$HOME" --arg target antigravity_desktop -f "$DOTFILES_ROOT/gen-permissions.jq" --argjson perms "$perms" -n)"
 
-  # Claude output check (retains all relative/glob rules)
-  local claude_json
-  claude_json="$(jq --arg target claude -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
-  local claude_deny_len
-  claude_deny_len="$(echo "$claude_json" | jq '.permissions.deny | length')"
-  [ "$claude_deny_len" -eq "$((num_files + num_cmds))" ]
-  [ "$(echo "$claude_json" | jq -r '.permissions.deny | map(select(. == "Read(~/.ssh)" or . == "Read(~/.env)")) | length')" = "0" ]
-
-  # Antigravity CLI & Desktop output check
-  local agy_json desktop_json
-  agy_json="$(jq --arg home "$HOME" --arg target agy_cli -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
-  desktop_json="$(jq --arg home "$HOME" --arg target antigravity_desktop -f "$dotfiles/gen-permissions.jq" --argjson perms "$(<"$manifest")" -n)"
-
-  # Antigravity CLI and Desktop deny rules must match each other and contain >20 rules
-  [ "$(echo "$agy_json" | jq '.permissions.deny | length')" -gt 20 ]
-  [ "$(echo "$agy_json" | jq -c '.permissions.deny')" = "$(echo "$desktop_json" | jq -c '.userSettings.globalPermissionGrants.deny')" ]
-
-  # Sandbox safety invariant: every read_file(...) / write_file(...) target in
-  # Antigravity rules must be an absolute path starting with `/` and free of globs
-  [ "$(echo "$agy_json" | jq '[(.permissions.deny[]), (.permissions.allow[]) | capture("^(?:read|write)_file\\((?<p>.*)\\)$").p | select((startswith("/") | not) or test("[*?\\[]"))] | length')" -eq 0 ]
-
-  # Parity on allow commands
-  [ "$(echo "$claude_json" | jq -r '.permissions.allow[0]')" = "Bash(ccusage)" ]
-  [ "$(echo "$agy_json" | jq -r '.permissions.allow[0]')" = "command(ccusage)" ]
-  [ "$(echo "$desktop_json" | jq -r '.userSettings.globalPermissionGrants.allow[0]')" = "command(ccusage)" ]
-  [ "$(echo "$agy_json" | jq -c '.permissions.allow')" = "$(echo "$desktop_json" | jq -c '.userSettings.globalPermissionGrants.allow')" ]
-  [ "$(echo "$claude_json" | jq -r '.permissions.allow | map(select(test("ts-"))) | length')" = "0" ]
+  jq -ne \
+    --argjson manifest "$perms" \
+    --argjson claude "$claude_json" \
+    --argjson agy "$agy_json" \
+    --argjson desktop "$desktop_json" '
+    # Claude output retains all relative/glob rules and omits agy-only files
+    ($claude.permissions.deny | length) == (($manifest.deny.files | length) + ($manifest.deny.commands | length))
+    and ($claude.permissions.deny | map(select(. == "Read(~/.ssh)" or . == "Read(~/.env)")) | length) == 0
+    # Antigravity CLI and Desktop deny rules match each other and contain >20 rules
+    and ($agy.permissions.deny | length) > 20
+    and $agy.permissions.deny == $desktop.userSettings.globalPermissionGrants.deny
+    # Sandbox safety invariant: every read_file(...) / write_file(...) target is absolute and glob-free
+    and ([($agy.permissions.deny[]), ($agy.permissions.allow[])
+          | capture("^(?:read|write)_file\\((?<p>.*)\\)$").p
+          | select((startswith("/") | not) or test("[*?\\[]"))] | length) == 0
+    # Parity on allow commands
+    and $claude.permissions.allow[0] == "Bash(ccusage)"
+    and $agy.permissions.allow[0] == "command(ccusage)"
+    and $desktop.userSettings.globalPermissionGrants.allow[0] == "command(ccusage)"
+    and $agy.permissions.allow == $desktop.userSettings.globalPermissionGrants.allow
+    and ($claude.permissions.allow | map(select(test("ts-"))) | length) == 0
+  ' >/dev/null
 }
 
 @test "setup_zsh_config_symlinks_zshrc_on_macos" {
-  uname() { echo "Darwin"; }
-  export -f uname
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
   # On macOS, ~/.zshrc is a symlink into the dotfiles repo
-  [ -L "$HOME/.zshrc" ]
-  local dotfiles
-  dotfiles="$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)"
-  [ "$(readlink "$HOME/.zshrc")" = "$dotfiles/.zshrc" ]
+  [ -L "$DARWIN_PERSONAL_HOME/.zshrc" ]
+  [ "$(readlink "$DARWIN_PERSONAL_HOME/.zshrc")" = "$DOTFILES_ROOT/.zshrc" ]
   # No .zshenv is ever created (Linux ZDOTDIR path was removed)
-  [ ! -e "$HOME/.zshenv" ]
+  [ ! -e "$DARWIN_PERSONAL_HOME/.zshenv" ]
 }
 
 # --is-work-machine is the single source of truth the Brewfile shells out to
@@ -374,109 +420,53 @@ EOF
 }
 
 @test "ghostty_config_linked_on_any_mac" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-
-  run bash "$INSTALL_SCRIPT"
-  [ -L "$HOME/.config/ghostty/config" ]
-  [ "$(readlink "$HOME/.config/ghostty/config")" = "$(cd "$(dirname "$INSTALL_SCRIPT")" && pwd)/ghostty/config" ]
+  [ -L "$DARWIN_PERSONAL_HOME/.config/ghostty/config" ]
+  [ "$(readlink "$DARWIN_PERSONAL_HOME/.config/ghostty/config")" = "$DOTFILES_ROOT/ghostty/config" ]
 }
 
 @test "ghostty_config_linked_on_work_mac" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  export -f uname hostname
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-
-  run bash "$INSTALL_SCRIPT"
-  [ -L "$HOME/.config/ghostty/config" ]
+  [ -L "$DARWIN_WORK_BASE_HOME/.config/ghostty/config" ]
 }
 
 @test "finder_defaults_written_and_finder_restarted_on_mac" {
-  uname() { echo "Darwin"; }
-  defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
-  killall() { echo "killall $*" >> "$HOME/calls.log"; }
-  export -f uname defaults killall
-  unset DOTFILES_SKIP_FINDER_DEFAULTS
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  grep -qx "defaults write com.apple.finder FXPreferredViewStyle -string Nlsv" "$HOME/calls.log"
-  grep -qx "defaults write com.apple.finder FXPreferredSearchViewStyle -string Nlsv" "$HOME/calls.log"
-  grep -qx "defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true" "$HOME/calls.log"
-  grep -qx "defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true" "$HOME/calls.log"
-  grep -qx "killall Finder" "$HOME/calls.log"
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
+  local log="$DARWIN_PERSONAL_HOME/calls.log"
+  grep -qx "defaults write com.apple.finder FXPreferredViewStyle -string Nlsv" "$log"
+  grep -qx "defaults write com.apple.finder FXPreferredSearchViewStyle -string Nlsv" "$log"
+  grep -qx "defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true" "$log"
+  grep -qx "defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true" "$log"
+  grep -qx "killall Finder" "$log"
 }
 
 @test "finder_not_restarted_when_defaults_already_set" {
-  uname() { echo "Darwin"; }
-  defaults() {
-    echo "defaults $*" >> "$HOME/calls.log"
-    case "$3" in
-      FXPreferred*) echo "Nlsv" ;;
-      DSDontWrite*) echo "1" ;;
-    esac
-  }
-  killall() { echo "killall $*" >> "$HOME/calls.log"; }
-  export -f uname defaults killall
-  unset DOTFILES_SKIP_FINDER_DEFAULTS
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"OK    Finder defaults already list view"* ]]
-  ! grep -q "defaults write com.apple.finder" "$HOME/calls.log"
-  ! grep -q "killall Finder" "$HOME/calls.log"
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal-alt.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-personal-alt.out")" == *"OK    Finder defaults already list view"* ]]
+  local log="$DARWIN_PERSONAL_ALT_HOME/calls.log"
+  ! grep -q "defaults write com.apple.finder" "$log"
+  ! grep -q "killall Finder" "$log"
 }
 
 @test "finder_defaults_skipped_on_linux" {
-  uname() { echo "Linux"; }
-  defaults() { echo "defaults $*" >> "$HOME/calls.log"; }
-  killall() { echo "killall $*" >> "$HOME/calls.log"; }
-  export -f uname defaults killall
-  unset DOTFILES_SKIP_FINDER_DEFAULTS
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -e "$HOME/calls.log" ]
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+  [ ! -e "$LINUX_HOME/calls.log" ]
 }
 
 @test "swiftbar_plugin_dir_not_written_when_home_is_not_real_home" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  launchctl() { return 0; }
-  trivy() { return 0; }
-  defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
-  dscl() { echo "NFSHomeDirectory: /Users/someone-else"; }
-  export -f uname hostname launchctl trivy defaults dscl
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  SwiftBar PluginDirectory (HOME is not the real user home)"* ]]
-  ! grep -q "com.ameba.SwiftBar" "$HOME/calls.log"
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-work-base.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-work-base.out")" == *"SKIP  SwiftBar PluginDirectory (HOME is not the real user home)"* ]]
+  ! grep -q "com.ameba.SwiftBar" "$DARWIN_WORK_BASE_HOME/calls.log" 2>/dev/null
 }
 
 @test "swiftbar_plugin_dir_written_when_home_is_real_home" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  launchctl() { return 0; }
-  trivy() { return 0; }
-  defaults() { echo "defaults $*" >> "$HOME/calls.log"; [ "$1" != "read" ]; }
-  dscl() { echo "NFSHomeDirectory: $HOME"; }
-  export -f uname hostname launchctl trivy defaults dscl
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  grep -qx "defaults write com.ameba.SwiftBar PluginDirectory $HOME/.config/swiftbar" "$HOME/calls.log"
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-work-full.status")" -eq 0 ]
+  grep -qx "defaults write com.ameba.SwiftBar PluginDirectory $DARWIN_WORK_FULL_HOME/.config/swiftbar" "$DARWIN_WORK_FULL_HOME/calls.log"
 }
 
 @test "is_office_machine_flag_exits_0_for_shared_account_on_mac" {
   uname() { echo "Darwin"; }
   hostname() { echo "office-mac-mini"; }
   export -f uname hostname
-  export DOTFILES_OFFICE_USERS="$(id -un)"
+  export DOTFILES_OFFICE_USERS="$CURRENT_USER"
 
   run bash "$INSTALL_SCRIPT" --is-office-machine
   [ "$status" -eq 0 ]
@@ -487,7 +477,7 @@ EOF
   uname() { echo "Darwin"; }
   hostname() { echo "office-macbook"; }
   export -f uname hostname
-  export DOTFILES_OFFICE_USERS="other-office-account $(id -un)"
+  export DOTFILES_OFFICE_USERS="other-office-account $CURRENT_USER"
 
   run bash "$INSTALL_SCRIPT" --is-office-machine
   [ "$status" -eq 0 ]
@@ -497,7 +487,7 @@ EOF
   uname() { echo "Darwin"; }
   hostname() { echo "office-macbook"; }
   export -f uname hostname
-  export DOTFILES_OFFICE_USERS="$(id -un)x"
+  export DOTFILES_OFFICE_USERS="${CURRENT_USER}x"
 
   run bash "$INSTALL_SCRIPT" --is-office-machine
   [ "$status" -eq 1 ]
@@ -515,7 +505,7 @@ EOF
 @test "is_office_machine_flag_exits_1_on_linux" {
   uname() { echo "Linux"; }
   export -f uname
-  export DOTFILES_OFFICE_USERS="$(id -un)"
+  export DOTFILES_OFFICE_USERS="$CURRENT_USER"
 
   run bash "$INSTALL_SCRIPT" --is-office-machine
   [ "$status" -eq 1 ]
@@ -526,114 +516,70 @@ EOF
   hostname() { echo "custom-corp-laptop"; }
   export -f uname hostname
   export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-  export DOTFILES_OFFICE_USERS="$(id -un)"
+  export DOTFILES_OFFICE_USERS="$CURRENT_USER"
 
   run bash "$INSTALL_SCRIPT" --is-office-machine
   [ "$status" -eq 1 ]
 }
 
 @test "office_machine_keeps_manifest_model_and_gets_swiftbar_and_grok_guard" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "office-mac-mini"; }
-  launchctl() { return 0; }
-  export -f uname hostname launchctl
-  export DOTFILES_OFFICE_USERS="$(id -un)"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  sonnet switch (work/office machine"* ]]
-  [ "$(jq -r '.model' "$HOME/.claude/settings.json")" != "sonnet" ]
-  [ -L "$HOME/.config/swiftbar/prodwatch.60s.sh" ]
-  grep -qx "PRODWATCH_GITHUB_USER=NUSXGrok" "$HOME/.config/prodwatch/identity"
-  grep -qx "PRODWATCH_WORK_AUTHOR=NUSXGrok" "$HOME/.config/prodwatch/identity"
-  [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
-  [ ! -L "$HOME/.grok/hooks/identity-guard.sh" ]
-  jq -e --arg users "$(id -un)" '.hooks.PreToolUse[0].hooks[0].command == "GROK_GUARD_OFFICE_USERS='"'"'\($users)'"'"' bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
-  [[ "$output" == *"SKIP  daily-session-log agent (non-work machine)"* ]]
-  [[ "$output" == *"SKIP  trivy DB pre-warm (non-work machine)"* ]]
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-office.status")" -eq 0 ]
+  local out
+  out="$(<"$SHARED_FIXTURES_DIR/darwin-office.out")"
+  [[ "$out" == *"SKIP  sonnet switch (work/office machine"* ]]
+  [ "$(jq -r '.model' "$DARWIN_OFFICE_HOME/.claude/settings.json")" != "sonnet" ]
+  [ -L "$DARWIN_OFFICE_HOME/.config/swiftbar/prodwatch.60s.sh" ]
+  grep -qx "PRODWATCH_GITHUB_USER=NUSXGrok" "$DARWIN_OFFICE_HOME/.config/prodwatch/identity"
+  grep -qx "PRODWATCH_WORK_AUTHOR=NUSXGrok" "$DARWIN_OFFICE_HOME/.config/prodwatch/identity"
+  [ -x "$DARWIN_OFFICE_HOME/.grok/hooks/identity-guard.sh" ]
+  [ ! -L "$DARWIN_OFFICE_HOME/.grok/hooks/identity-guard.sh" ]
+  jq -e --arg users "$CURRENT_USER" '.hooks.PreToolUse[0].hooks[0].command == "GROK_GUARD_OFFICE_USERS='"'"'\($users)'"'"' bash ~/.grok/hooks/identity-guard.sh"' "$DARWIN_OFFICE_HOME/.grok/hooks/identity-guard.json"
+  [[ "$out" == *"SKIP  daily-session-log agent (non-work machine)"* ]]
+  [[ "$out" == *"SKIP  trivy DB pre-warm (non-work machine)"* ]]
 }
 
 @test "grok_guard_skipped_on_personal_mac" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SKIP  grok identity guard (non-office machine without Grok)"* ]]
-  [ ! -e "$HOME/.grok/hooks/identity-guard.sh" ]
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
+  [[ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.out")" == *"SKIP  grok identity guard (non-office machine without Grok)"* ]]
+  [ ! -e "$DARWIN_PERSONAL_HOME/.grok/hooks/identity-guard.sh" ]
 }
 
 @test "grok_guard_installed_on_personal_mac_with_grok" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-  mkdir -p "$HOME/.grok"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
-  jq -e '.hooks.PreToolUse[0].hooks[0].command == "GROK_GUARD_OFFICE_USERS='"'"'no-such-office-user'"'"' bash ~/.grok/hooks/identity-guard.sh"' "$HOME/.grok/hooks/identity-guard.json"
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal-alt.status")" -eq 0 ]
+  [ -x "$DARWIN_PERSONAL_ALT_HOME/.grok/hooks/identity-guard.sh" ]
+  jq -e '.hooks.PreToolUse[0].hooks[0].command == "GROK_GUARD_OFFICE_USERS='"'"'no-such-office-user'"'"' bash ~/.grok/hooks/identity-guard.sh"' "$DARWIN_PERSONAL_ALT_HOME/.grok/hooks/identity-guard.json"
 }
 
 @test "grok_guard_installed_on_work_mac_with_grok" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  launchctl() { return 0; }
-  trivy() { return 0; }
-  export -f uname hostname launchctl trivy
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-  mkdir -p "$HOME/.grok"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ -x "$HOME/.grok/hooks/identity-guard.sh" ]
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-work-full.status")" -eq 0 ]
+  [ -x "$DARWIN_WORK_FULL_HOME/.grok/hooks/identity-guard.sh" ]
 }
 
 @test "grok_guard_not_installed_on_linux" {
-  uname() { echo "Linux"; }
-  export -f uname
-  mkdir -p "$HOME/.grok"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -e "$HOME/.grok/hooks/identity-guard.sh" ]
+  [ "$(<"$SHARED_FIXTURES_DIR/linux.status")" -eq 0 ]
+  [ ! -e "$LINUX_HOME/.grok/hooks/identity-guard.sh" ]
 }
 
 @test "work_machine_has_no_prodwatch_identity_override" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "custom-corp-laptop"; }
-  launchctl() { return 0; }
-  trivy() { return 0; }
-  export -f uname hostname launchctl trivy
-  export DOTFILES_WORK_HOSTNAME="custom-corp-laptop"
-  mkdir -p "$HOME/.config/prodwatch"
-  echo "PRODWATCH_GITHUB_USER=stale" > "$HOME/.config/prodwatch/identity"
-
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -e "$HOME/.config/prodwatch/identity" ]
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-work-base.status")" -eq 0 ]
+  [ ! -e "$DARWIN_WORK_BASE_HOME/.config/prodwatch/identity" ]
 }
 
 @test "alt_profile_inherits_default_but_isolates_memory_on_macos" {
-  uname() { echo "Darwin"; }
-  hostname() { echo "personal-macbook-pro"; }
-  export -f uname hostname
-  export ANTHROPIC_AUTH_TOKEN="main-token"
+  [ "$(<"$SHARED_FIXTURES_DIR/darwin-personal.status")" -eq 0 ]
 
-  run bash "$INSTALL_SCRIPT"
-  [ "$status" -eq 0 ]
-
-  local alt="$HOME/.claude-alt-profile"
+  local alt="$DARWIN_PERSONAL_HOME/.claude-alt-profile"
   [ -f "$alt/settings.json" ]
-  [ "$(jq -c '.hooks.PreToolUse' "$alt/settings.json")" = "$(jq -c '.hooks.PreToolUse' "$HOME/.claude/settings.json")" ]
-  [ "$(jq -r '.model' "$alt/settings.json")" = "sonnet" ]
-  [ "$(jq -r '.env.ANTHROPIC_AUTH_TOKEN // "unset"' "$alt/settings.json")" = "unset" ]
-  [ "$(jq '.hooks.PostToolUse | length' "$alt/settings.json")" -eq 0 ]
+  jq -e --slurpfile def "$DARWIN_PERSONAL_HOME/.claude/settings.json" '
+    .hooks.PreToolUse == $def[0].hooks.PreToolUse
+    and .model == "sonnet"
+    and (.env.ANTHROPIC_AUTH_TOKEN // "unset") == "unset"
+    and (.hooks.PostToolUse | length) == 0
+  ' "$alt/settings.json" >/dev/null
 
   [ -L "$alt/skills" ]
-  [ "$(readlink "$alt/skills")" = "$HOME/.claude/skills" ]
+  [ "$(readlink "$alt/skills")" = "$DARWIN_PERSONAL_HOME/.claude/skills" ]
   [ ! -e "$alt/projects" ]
 
-  grep -q 'a-claude() { claude_with_profile "$HOME/.claude-alt-profile"' "$HOME/.claude-profiles.zsh"
+  grep -q 'a-claude() { claude_with_profile "$HOME/.claude-alt-profile"' "$DARWIN_PERSONAL_HOME/.claude-profiles.zsh"
 }
