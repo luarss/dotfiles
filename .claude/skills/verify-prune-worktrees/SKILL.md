@@ -5,9 +5,9 @@ description: Drive the real `bin/prune-worktrees` CLI (dotfiles repo) against a 
 
 # Verify prune-worktrees
 
-`bin/prune-worktrees` is a Python 3 CLI with no dependencies. It walks a root dir (default `~/work`), finds git repos, and classifies every linked worktree against `<remote>/HEAD`, then asks `gh` whether a merged PR covers any branch still unmerged there. It is a dry run unless you pass `--remove`. `install.sh` (`install_bin`) symlinks it to `~/.local/bin/prune-worktrees`.
+`bin/prune-worktrees` is a Python 3 CLI with no dependencies. It walks a root dir (default: the current directory), finds git repos, and classifies every linked worktree against `<remote>/HEAD`, then asks `gh` whether a merged PR covers any branch still unmerged there. It is a dry run unless you pass `--remove`. `install.sh` (`install_bin`) symlinks it to `~/.local/bin/prune-worktrees`.
 
-**Isolation rule:** the default root is the user's real `~/work`, and `--remove` destroys real worktrees and their merged branches there (and `--delete-branches` unmerged ones too). Verification always runs against a sandbox fixture built by the helper. The helper refuses to run unless the root carries its fixture marker. Never run `prune-worktrees` with no root argument, and never pass `--remove` with `~/work` as the root. Each run-id has its own sandbox, so parallel runs never collide.
+**Isolation rule:** the default root is the current directory (often the user's real `~/work` or a repo under it), and `--remove` destroys real worktrees and their merged branches there (and `--delete-branches` unmerged ones too). Verification always runs against a sandbox fixture built by the helper. The helper refuses to run unless the root carries its fixture marker. Never run `prune-worktrees` with no root argument, and never pass `--remove` with `~/work` as the root. Each run-id has its own sandbox, so parallel runs never collide.
 
 ## Helper
 

@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `discover-root` scans the positional `root`, defaulting to `~/work`.
+- `discover-root` scans the positional `root`, defaulting to the current directory.
 - `discover-skip-dirs` ignores repos under skipped directory names.
 - `discover-no-nested` ignores repos nested inside another repo.
 - `discover-worktrees-not-repos` keeps linked worktree dirs out of the repo count.
@@ -12,7 +12,7 @@
 
 ## How to get to it (user POV)
 
-- `prune-worktrees` (scans `~/work`)
+- `prune-worktrees` (scans the current directory)
 - `prune-worktrees <root>`
 - `prune-worktrees <root> --jobs N`
 

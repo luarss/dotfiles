@@ -347,7 +347,7 @@ def summarize(dead, args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Find git worktrees whose branch is merged or deleted on the remote.")
-    parser.add_argument("root", nargs="?", default=os.path.expanduser("~/work"))
+    parser.add_argument("root", nargs="?", default=os.getcwd())
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--no-fetch", action="store_true", help="skip git fetch --prune")
     parser.add_argument("--no-gh", action="store_true", help="skip checking GitHub for merged pull requests")

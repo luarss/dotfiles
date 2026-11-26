@@ -19,7 +19,7 @@ Running `prune-worktrees` without `--remove` prints a table of linked worktrees 
 
 ## How to get to it (user POV)
 
-- `prune-worktrees`, which scans `~/work`. **Not used in verification.**
+- `prune-worktrees`, which scans the current directory. **Not used in verification.**
 - `prune-worktrees <root>`
 - `prune-worktrees <root> --all`
 
